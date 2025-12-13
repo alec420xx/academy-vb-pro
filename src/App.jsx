@@ -46,6 +46,8 @@ const CourtIcon = ({ size = 24, className = "" }) => (
 );
 
 // --- HELPERS ---
+const generateId = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
 const getRoleColor = (role) => {
   if (role === 'S') return 'bg-yellow-400 text-yellow-950 border-yellow-500';
   if (role === 'L') return 'bg-white text-slate-900 border-slate-300';
@@ -168,36 +170,38 @@ const Court = ({
   };
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const parent = courtRef?.current || canvas?.parentElement;
-    
-    if (canvas && parent) {
-      const rect = parent.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1; 
-      
-      if (Math.abs(canvas.width - rect.width * dpr) > 5 || Math.abs(canvas.height - rect.height * dpr) > 5) {
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        canvas.style.width = `${rect.width}px`;
-        canvas.style.height = `${rect.height}px`;
-      }
-      
-      const ctx = canvas.getContext('2d');
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.scale(dpr, dpr);
-      const width = rect.width;
-      const height = rect.height;
-      
-      if (paths) {
-          paths.forEach(path => {
-            drawPath(ctx, path.points, path.color, width, height);
-          });
-      }
-      if (currentPath && currentPath.points.length > 0) {
-        drawPath(ctx, currentPath.points, currentPath.color, width, height);
-      }
-    }
+    const handleResize = () => {
+        const canvas = canvasRef.current;
+        const parent = courtRef?.current || canvas?.parentElement;
+        if (canvas && parent) {
+            const rect = parent.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = `${rect.width}px`;
+            canvas.style.height = `${rect.height}px`;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.scale(dpr, dpr);
+            const width = rect.width;
+            const height = rect.height;
+            
+            if (paths) {
+                paths.forEach(path => {
+                    drawPath(ctx, path.points, path.color, width, height);
+                });
+            }
+            if (currentPath && currentPath.points.length > 0) {
+                drawPath(ctx, currentPath.points, currentPath.color, width, height);
+            }
+        }
+    };
+
+    handleResize(); // Initial draw
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, [paths, currentPath, courtRef, small]);
 
   return (
@@ -396,27 +400,46 @@ const App = () => {
     }
   }, [roster, savedRotations, playerPositions, paths, activePlayerIds, currentLineupId]); 
 
-  // --- AUTO-SAVE ROSTER TO TEAM ---
+  // --- DATA SANITIZATION (Fix Zombie/Phantom bugs) ---
   useEffect(() => {
-    if (currentTeamId && teams.length > 0) {
-        // Auto-update the active team's roster when the roster state changes
+    // 1. Sanitize Bench Selection: If selected player deleted, clear selection
+    if (selectedBenchPlayerId && !roster.find(p => p.id === selectedBenchPlayerId)) {
+        setSelectedBenchPlayerId(null);
+    }
+
+    // 2. Sanitize Active Players: Remove deleted players from court
+    const validIds = new Set(roster.map(p => p.id));
+    const ghostPlayers = activePlayerIds.filter(id => !validIds.has(id));
+
+    if (ghostPlayers.length > 0) {
+        setActivePlayerIds(prev => prev.filter(id => validIds.has(id)));
+        setPlayerPositions(prev => {
+            const next = { ...prev };
+            ghostPlayers.forEach(id => delete next[id]);
+            return next;
+        });
+    }
+  }, [roster, selectedBenchPlayerId, activePlayerIds]);
+
+  // --- AUTO-SAVE ROSTER TO TEAM (Debounced) ---
+  useEffect(() => {
+    if (!currentTeamId || teams.length === 0) return;
+
+    const timer = setTimeout(() => {
         const updatedTeams = teams.map(t => 
             t.id === currentTeamId ? { ...t, roster: roster } : t
         );
-        // Only update if actually different to avoid render loops (simple check not implemented for brevity, but map creates new refs)
-        // However, we need to sync this to localStorage.
-        // We use a functional update to ensure we don't depend on stale `teams` state if it updates rapidly.
-        // But `teams` is in dependency array? No, only `roster` triggers this.
-        // Let's just do it.
         setTeams(updatedTeams);
         localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(updatedTeams));
-    }
-  }, [roster]);
+    }, 1000); // 1 second debounce to prevent lag on typing
+
+    return () => clearTimeout(timer);
+  }, [roster, currentTeamId, teams]);
 
   // --- TEAM MANAGEMENT ---
   const createTeam = () => {
       const newTeam = {
-          id: `team_${Date.now()}`,
+          id: generateId('team'),
           name: newItemName || 'New Team',
           roster: defaultRoster
       };
@@ -468,7 +491,7 @@ const App = () => {
   // --- LINEUP MANAGEMENT ---
   const createLineup = (name, rosterToUse, teamId = currentTeamId, currentLineupsList = lineups) => {
     const newLineup = {
-      id: `lineup_${Date.now()}`,
+      id: generateId('lineup'),
       teamId: teamId,
       name: name,
       roster: JSON.parse(JSON.stringify(rosterToUse)), 
@@ -736,12 +759,15 @@ const App = () => {
 
     window.addEventListener('mousemove', handleWindowMove);
     window.addEventListener('mouseup', handleWindowUp);
+    // FIX: Add mouseleave listener to prevent "stuck" drags
+    window.addEventListener('mouseleave', handleWindowUp);
     window.addEventListener('touchmove', handleWindowMove, { passive: false });
     window.addEventListener('touchend', handleWindowUp);
     
     return () => {
         window.removeEventListener('mousemove', handleWindowMove);
         window.removeEventListener('mouseup', handleWindowUp);
+        window.removeEventListener('mouseleave', handleWindowUp);
         window.removeEventListener('touchmove', handleWindowMove);
         window.removeEventListener('touchend', handleWindowUp);
     };
@@ -1271,7 +1297,7 @@ const App = () => {
                   <p className="text-xs text-slate-400 mt-1">Editing <strong>{teams.find(t=>t.id===currentTeamId)?.name}</strong></p>
               </div>
               <div className="flex gap-3">
-                 <button onClick={() => setRoster(prev => [...prev, { id: `p${Date.now()}`, role: 'DS', name: 'New', number: '' }])} className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-500 transition-colors"><UserPlus size={16} /> Add Player</button>
+                 <button onClick={() => setRoster(prev => [...prev, { id: generateId('p'), role: 'DS', name: 'New', number: '' }])} className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-500 transition-colors"><UserPlus size={16} /> Add Player</button>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
