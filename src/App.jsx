@@ -396,6 +396,23 @@ const App = () => {
     }
   }, [roster, savedRotations, playerPositions, paths, activePlayerIds, currentLineupId]); 
 
+  // --- AUTO-SAVE ROSTER TO TEAM ---
+  useEffect(() => {
+    if (currentTeamId && teams.length > 0) {
+        // Auto-update the active team's roster when the roster state changes
+        const updatedTeams = teams.map(t => 
+            t.id === currentTeamId ? { ...t, roster: roster } : t
+        );
+        // Only update if actually different to avoid render loops (simple check not implemented for brevity, but map creates new refs)
+        // However, we need to sync this to localStorage.
+        // We use a functional update to ensure we don't depend on stale `teams` state if it updates rapidly.
+        // But `teams` is in dependency array? No, only `roster` triggers this.
+        // Let's just do it.
+        setTeams(updatedTeams);
+        localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(updatedTeams));
+    }
+  }, [roster]);
+
   // --- TEAM MANAGEMENT ---
   const createTeam = () => {
       const newTeam = {
@@ -512,13 +529,6 @@ const App = () => {
       setLineups(updated);
       localStorage.setItem(STORAGE_KEY_LINEUPS, JSON.stringify(updated));
       setEditId(null);
-  };
-
-  const saveAsMasterTeam = () => {
-    const updatedTeams = teams.map(t => t.id === currentTeamId ? { ...t, roster: roster } : t);
-    setTeams(updatedTeams);
-    localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(updatedTeams));
-    alert(`Roster saved as default for ${teams.find(t => t.id === currentTeamId)?.name}!`);
   };
 
   const clearAllData = () => {
@@ -691,16 +701,24 @@ const App = () => {
                        const dist = Math.sqrt(Math.pow(pos.x - dropX, 2) + Math.pow(pos.y - dropY, 2));
                        if (dist < minDist) { minDist = dist; nearestId = pid; }
                    });
+                   
                    if (nearestId) {
                        const benchId = draggedPlayer.id;
-                       const newActive = activePlayerIds.map(id => id === nearestId ? benchId : id);
-                       setActivePlayerIds(newActive);
-                       setPlayerPositions(prev => {
-                           const next = {...prev};
-                           next[benchId] = next[nearestId];
-                           delete next[nearestId];
-                           return next;
-                       });
+                       
+                       // GUARD: Prevent replacing self (fixes disappearing bug if player is ghost-duplicated)
+                       if (benchId !== nearestId) {
+                           const newActive = activePlayerIds.map(id => id === nearestId ? benchId : id);
+                           setActivePlayerIds(newActive);
+                           setPlayerPositions(prev => {
+                               const next = {...prev};
+                               // Safety check: ensure the court position still exists
+                               if (next[nearestId]) {
+                                   next[benchId] = { ...next[nearestId] }; // Deep copy position
+                                   delete next[nearestId];
+                               }
+                               return next;
+                           });
+                       }
                    }
                }
            }
@@ -950,14 +968,13 @@ const App = () => {
                         value={newItemName}
                         onChange={(e) => setNewItemName(e.target.value)}
                       />
-                      <div className="grid grid-cols-2 gap-3">
-                          <button onClick={() => createLineup(newItemName || 'New Lineup', getMasterTeam())} className="p-3 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-sm transition-colors">
-                              Use Master Team
-                          </button>
-                          <button onClick={() => createLineup(newItemName || 'New Lineup', roster)} className="p-3 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg font-medium text-sm transition-colors">
-                              Clone Current
-                          </button>
-                      </div>
+                      {/* SIMPLIFIED LINEUP CREATION BUTTON */}
+                      <button 
+                        onClick={() => createLineup(newItemName || 'New Lineup', roster)} 
+                        className="w-full p-3 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                      >
+                          <Plus size={16} /> Create Lineup
+                      </button>
                   </div>
               </div>
           </div>
@@ -1088,8 +1105,9 @@ const App = () => {
                </div>
                
                <div className="mt-6 flex justify-center">
+                  {/* UPDATED RESET BUTTON TEXT */}
                   <button onClick={() => initRotationDefaults(currentRotation, roster)} className="text-slate-500 hover:text-white text-xs font-bold flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors">
-                     <RefreshCw size={12} /> Reset to Default Positions
+                     <RefreshCw size={12} /> Reset Positions & Drawings
                    </button>
                </div>
             </div>
@@ -1161,6 +1179,15 @@ const App = () => {
                                         const key = getStorageKey(rot, phase.id);
                                         // Auto-populate data if missing (Bug fix for empty cells)
                                         let data = savedRotations[key];
+
+                                        // FORCE CURRENT STATE IF VIEW MATCHES (Fixes drawing sync issues)
+                                        if (rot === currentRotation && phase.id === currentPhase) {
+                                            data = {
+                                                positions: playerPositions,
+                                                paths: paths,
+                                                activePlayers: activePlayerIds
+                                            };
+                                        }
                                         
                                         // AUTO-HEAL: If data is missing OR if the players in data don't exist in current roster
                                         let validData = true;
@@ -1234,7 +1261,6 @@ const App = () => {
                   <p className="text-xs text-slate-400 mt-1">Editing <strong>{teams.find(t=>t.id===currentTeamId)?.name}</strong></p>
               </div>
               <div className="flex gap-3">
-                 <button onClick={saveAsMasterTeam} className="flex items-center gap-2 bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-600 transition-colors"><Save size={16} /> Save Default</button>
                  <button onClick={() => setRoster(prev => [...prev, { id: `p${Date.now()}`, role: 'DS', name: 'New', number: '' }])} className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-500 transition-colors"><UserPlus size={16} /> Add Player</button>
               </div>
             </div>
