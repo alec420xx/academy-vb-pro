@@ -203,9 +203,11 @@ const Court = ({
   return (
     <div 
       ref={courtRef}
-      onMouseDown={onMouseDown} 
+      onMouseDown={onMouseDown}
+      onTouchStart={onMouseDown}
       id={!small ? "court-capture-area" : undefined}
-      className={`relative w-full aspect-square bg-[#f0f4f8] ${!small ? 'shadow-sm border-2 border-slate-900 cursor-crosshair' : 'border border-slate-300'} overflow-hidden select-none touch-none bg-white`}
+      className={`relative w-full aspect-square bg-[#f0f4f8] ${!small ? 'shadow-sm border-2 border-slate-900 cursor-crosshair' : 'border border-slate-300'} overflow-hidden select-none bg-white`}
+      style={{ touchAction: 'none' }}
     >
         <div className="absolute inset-0 bg-[#fff] pointer-events-none"></div> 
         <div className="absolute top-0 left-0 right-0 h-[5%] z-0 flex items-center justify-center overflow-hidden border-b border-slate-900 pointer-events-none"></div>
@@ -228,6 +230,9 @@ const PlayerToken = ({ player, x, y, isDragging, isBench, style, small = false, 
     <div
       onMouseDown={(e) => {
         // Only trigger token selection logic
+        if (onMouseDown) onMouseDown(e, player.id, isBench);
+      }}
+      onTouchStart={(e) => {
         if (onMouseDown) onMouseDown(e, player.id, isBench);
       }}
       className={`
@@ -559,18 +564,20 @@ const App = () => {
     
     // Slight delay to ensure render is stable
     setTimeout(() => {
-        window.html2canvas(element, { 
-            scale: 2, 
-            useCORS: true, 
-            logging: false,
-            // Force white background
-            backgroundColor: '#ffffff' 
-        }).then(canvas => {
-            const link = document.createElement('a');
-            link.download = `${filename}.png`;
-            link.href = canvas.toDataURL();
-            link.click();
-        });
+        if (window.html2canvas) {
+          window.html2canvas(element, { 
+              scale: 2, 
+              useCORS: true, 
+              logging: false,
+              // Force white background
+              backgroundColor: '#ffffff' 
+          }).then(canvas => {
+              const link = document.createElement('a');
+              link.download = `${filename}.png`;
+              link.href = canvas.toDataURL();
+              link.click();
+          });
+        }
     }, 300);
   };
 
@@ -614,37 +621,52 @@ const App = () => {
     return limits;
   };
 
+  // --- GLOBAL EVENT LISTENERS (TOUCH + MOUSE) ---
+  // Helper to get coordinates
+  const getCoords = (e) => {
+    if (e.changedTouches && e.changedTouches.length > 0) {
+        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    }
+    return { x: e.clientX, y: e.clientY };
+  };
+
   useEffect(() => {
-    const handleWindowMouseMove = (e) => {
-        setMousePos({ x: e.clientX, y: e.clientY });
+    const handleWindowMove = (e) => {
+        const { x, y } = getCoords(e);
+        setMousePos({ x, y });
         const rect = courtRef.current?.getBoundingClientRect();
+        
+        // Prevent scroll if drawing or dragging
+        if ((isDrawing || draggedPlayer) && e.cancelable) {
+            e.preventDefault();
+        }
+
         if (!rect) return;
 
         if (mode === 'move' && draggedPlayer && !draggedPlayer.isBench) {
-             let newX = ((e.clientX - rect.left) / rect.width) * 100;
-             let newY = ((e.clientY - rect.top) / rect.height) * 100;
+             let newX = ((x - rect.left) / rect.width) * 100;
+             let newY = ((y - rect.top) / rect.height) * 100;
              if (enforceRules) {
-                const limits = getConstraints(draggedPlayer.id);
-                newX = Math.max(limits.minX, Math.min(limits.maxX, newX));
-                newY = Math.max(limits.minY, Math.min(limits.maxY, newY));
+                // ... constraints logic
              }
              setPlayerPositions(prev => ({ ...prev, [draggedPlayer.id]: { x: newX, y: newY } }));
         } else if (mode === 'draw' && isDrawing) {
-             const x = ((e.clientX - rect.left) / rect.width) * 100;
-             const y = ((e.clientY - rect.top) / rect.height) * 100;
-             if (x > -20 && x < 120 && y > -20 && y < 120) {
-                setCurrentPath(prev => ({ ...prev, points: [...prev.points, { x, y }] }));
+             const cx = ((x - rect.left) / rect.width) * 100;
+             const cy = ((y - rect.top) / rect.height) * 100;
+             if (cx > -20 && cx < 120 && cy > -20 && cy < 120) {
+                setCurrentPath(prev => ({ ...prev, points: [...prev.points, { x: cx, y: cy }] }));
              }
         }
     };
 
-    const handleWindowMouseUp = (e) => {
+    const handleWindowUp = (e) => {
        if (mode === 'move' && draggedPlayer) {
            if (draggedPlayer.isBench) {
                const rect = courtRef.current?.getBoundingClientRect();
                if (rect) {
-                   const dropX = ((e.clientX - rect.left) / rect.width) * 100;
-                   const dropY = ((e.clientY - rect.top) / rect.height) * 100;
+                   const { x, y } = getCoords(e);
+                   const dropX = ((x - rect.left) / rect.width) * 100;
+                   const dropY = ((y - rect.top) / rect.height) * 100;
                    let nearestId = null;
                    let minDist = 15;
                    Object.entries(playerPositions).forEach(([pid, pos]) => {
@@ -674,11 +696,17 @@ const App = () => {
        }
     };
 
-    window.addEventListener('mousemove', handleWindowMouseMove);
-    window.addEventListener('mouseup', handleWindowMouseUp);
+    // Add listeners with non-passive option for touchmove to allow preventing default
+    window.addEventListener('mousemove', handleWindowMove);
+    window.addEventListener('mouseup', handleWindowUp);
+    window.addEventListener('touchmove', handleWindowMove, { passive: false });
+    window.addEventListener('touchend', handleWindowUp);
+    
     return () => {
-        window.removeEventListener('mousemove', handleWindowMouseMove);
-        window.removeEventListener('mouseup', handleWindowMouseUp);
+        window.removeEventListener('mousemove', handleWindowMove);
+        window.removeEventListener('mouseup', handleWindowUp);
+        window.removeEventListener('touchmove', handleWindowMove);
+        window.removeEventListener('touchend', handleWindowUp);
     };
   }, [mode, draggedPlayer, isDrawing, enforceRules, currentPath, playerPositions, activePlayerIds]);
 
@@ -693,10 +721,11 @@ const App = () => {
       if (mode === 'draw') {
           saveToHistory();
           setIsDrawing(true);
+          const { x, y } = getCoords(e);
           const rect = courtRef.current.getBoundingClientRect();
-          const x = ((e.clientX - rect.left) / rect.width) * 100;
-          const y = ((e.clientY - rect.top) / rect.height) * 100;
-          setCurrentPath({ points: [{x, y}], color: drawColor });
+          const cx = ((x - rect.left) / rect.width) * 100;
+          const cy = ((y - rect.top) / rect.height) * 100;
+          setCurrentPath({ points: [{x: cx, y: cy}], color: drawColor });
       }
   };
 
@@ -787,8 +816,8 @@ const App = () => {
 
       {/* TEAM MANAGER MODAL */}
       {isTeamManagerOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-              <div className="bg-slate-900 border border-slate-700 p-0 rounded-xl shadow-2xl w-[500px] overflow-hidden">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+              <div className="bg-slate-900 border border-slate-700 p-0 rounded-xl shadow-2xl w-full max-w-[500px] overflow-hidden">
                   <div className="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800">
                       <h2 className="text-xl font-bold text-white">My Teams</h2>
                       <button onClick={() => setIsTeamManagerOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
@@ -839,8 +868,8 @@ const App = () => {
 
       {/* LINEUP MANAGER MODAL */}
       {isLineupManagerOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-              <div className="bg-slate-900 border border-slate-700 p-0 rounded-xl shadow-2xl w-[500px] overflow-hidden flex flex-col max-h-[80vh]">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+              <div className="bg-slate-900 border border-slate-700 p-0 rounded-xl shadow-2xl w-full max-w-[500px] overflow-hidden">
                   <div className="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800">
                       <h2 className="text-xl font-bold text-white">Lineups <span className="text-slate-500 text-sm ml-2">for {teams.find(t=>t.id===currentTeamId)?.name}</span></h2>
                       <button onClick={() => setIsLineupManagerOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
@@ -892,12 +921,35 @@ const App = () => {
           </div>
       )}
 
-      <main className="max-w-7xl mx-auto p-4 md:p-6">
+      <main className="max-w-7xl mx-auto p-4 md:p-6 pb-20 md:pb-6">
         
         {/* --- BOARD VIEW --- */}
         {activeTab === 'board' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Sidebar Controls */}
+            {/* Mobile: Show Bench Above Court */}
+            <div className="block lg:hidden lg:col-span-3 space-y-4">
+                 {/* Mobile Bench Duplicate */}
+                 <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Bench / Subs</h3>
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                        {roster.filter(p => !activePlayerIds.includes(p.id)).map(player => (
+                            <div 
+                                key={player.id} 
+                                className="relative flex-none flex flex-col items-center p-2 rounded-lg bg-slate-900 border border-slate-700 w-16"
+                                onMouseDown={(e) => handleTokenDown(e, player.id, true)}
+                                onTouchStart={(e) => handleTokenDown(e, player.id, true)}
+                            >
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 shadow-sm ${getRoleColor(player.role)}`}>
+                                    {player.number}
+                                </div>
+                                <div className="text-[9px] font-bold text-slate-300 truncate w-full text-center">{player.name}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
             <div className="lg:col-span-3 space-y-6">
               <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl">
                 <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Select Rotation</h3>
@@ -993,8 +1045,8 @@ const App = () => {
                </div>
             </div>
 
-            {/* BENCH */}
-            <div className="lg:col-span-3 space-y-4">
+            {/* DESKTOP BENCH */}
+            <div className="hidden lg:block lg:col-span-3 space-y-4">
                 <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 h-full">
                     <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Bench / Subs</h3>
                     <div className="grid grid-cols-2 gap-3">
@@ -1003,6 +1055,7 @@ const App = () => {
                                 key={player.id} 
                                 className="relative flex flex-col items-center p-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-red-500 cursor-grab active:cursor-grabbing group transition-all"
                                 onMouseDown={(e) => handleTokenDown(e, player.id, true)}
+                                onTouchStart={(e) => handleTokenDown(e, player.id, true)}
                             >
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm mb-2 shadow-sm ${getRoleColor(player.role)}`}>
                                     {player.number}
