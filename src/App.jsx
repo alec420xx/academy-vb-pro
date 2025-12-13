@@ -718,6 +718,8 @@ const App = () => {
                                }
                                return next;
                            });
+                           // FIX: Clear the selection so subsequent clicks don't trigger swap logic
+                           setSelectedBenchPlayerId(null);
                        }
                    }
                }
@@ -757,6 +759,14 @@ const App = () => {
       } 
       else if (!isBench && mode === 'move') {
           if (selectedBenchPlayerId) {
+              if (selectedBenchPlayerId === playerId) {
+                   // FIX: If selecting self (stale state), clear selection and treat as move
+                   setSelectedBenchPlayerId(null);
+                   saveToHistory();
+                   setDraggedPlayer({ id: playerId, isBench });
+                   return;
+              }
+
               const benchId = selectedBenchPlayerId;
               const courtId = playerId;
               const newActive = activePlayerIds.map(id => id === courtId ? benchId : id);
