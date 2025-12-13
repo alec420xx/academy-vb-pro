@@ -92,17 +92,20 @@ const calculateDefaultPositions = (rotNum, currentRoster) => {
 
 // --- COMPONENTS ---
 
-const RotationSquare = ({ rotation, roster }) => {
+const RotationSquare = ({ rotation, roster, small = false }) => {
   const zones = {};
   roster.slice(0,6).forEach((player, idx) => {
       const z = getPlayerZone(idx, rotation);
       zones[z] = player;
   });
 
-  const renderCell = (zoneId, borderClasses) => {
+  const borderClass = small ? "border-slate-900" : "border-slate-900 border-2";
+  const innerBorderClass = small ? "border-slate-900" : "border-slate-900";
+
+  const renderCell = (zoneId, cellBorderClasses) => {
       const p = zones[zoneId];
       return (
-          <div className={`flex flex-col items-center justify-center ${borderClasses} bg-white h-full overflow-hidden p-0.5`}>
+          <div className={`flex flex-col items-center justify-center ${cellBorderClasses} bg-white h-full overflow-hidden p-0.5`}>
               <div className="font-black text-slate-900 text-[10px] sm:text-[12px] leading-none mb-0.5 export-text-fix">{p ? p.number : '-'}</div>
               <div className="text-[6px] sm:text-[8px] font-bold text-slate-500 uppercase leading-none">{p ? p.role : ''}</div>
           </div>
@@ -110,15 +113,15 @@ const RotationSquare = ({ rotation, roster }) => {
   };
 
   return (
-    <div className="w-full h-full aspect-square border-2 border-slate-900 rounded-lg overflow-hidden flex flex-col">
-        <div className="flex-1 flex border-b border-slate-900">
-            <div className="flex-1">{renderCell(4, "border-r border-slate-900")}</div>
-            <div className="flex-1">{renderCell(3, "border-r border-slate-900")}</div>
+    <div className={`w-full h-full aspect-square ${borderClass} rounded-lg overflow-hidden flex flex-col bg-white`}>
+        <div className={`flex-1 flex border-b ${innerBorderClass}`}>
+            <div className="flex-1">{renderCell(4, `border-r ${innerBorderClass}`)}</div>
+            <div className="flex-1">{renderCell(3, `border-r ${innerBorderClass}`)}</div>
             <div className="flex-1">{renderCell(2, "")}</div>
         </div>
         <div className="flex-1 flex">
-            <div className="flex-1">{renderCell(5, "border-r border-slate-900")}</div>
-            <div className="flex-1">{renderCell(6, "border-r border-slate-900")}</div>
+            <div className="flex-1">{renderCell(5, `border-r ${innerBorderClass}`)}</div>
+            <div className="flex-1">{renderCell(6, `border-r ${innerBorderClass}`)}</div>
             <div className="flex-1">{renderCell(1, "")}</div>
         </div>
     </div>
@@ -996,27 +999,30 @@ const App = () => {
       </header>
 
       {/* --- MOBILE HEADER (Compact) --- */}
-      <header className="md:hidden bg-slate-900 border-b border-slate-800 p-3 sticky top-0 z-50 flex justify-between items-center shadow-lg">
-          <div className="flex items-center gap-2">
-              <div className="bg-red-600 p-1.5 rounded-md text-white">
-                  <ClubLogo size={18} />
-              </div>
-              <div className="leading-none">
-                  <div className="font-black text-white text-sm tracking-tight">ACADEMYVB</div>
-                  <div className="text-[10px] text-slate-400 font-bold truncate max-w-[120px]">
-                      {teams.find(t=>t.id===currentTeamId)?.name}
-                  </div>
-              </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setIsTeamManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700">
-               <Briefcase size={16} />
-            </button>
-            <button onClick={() => setIsLineupManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700">
-               <FolderOpen size={16} />
-            </button>
-          </div>
-      </header>
+      {/* Hide on export tab to prevent sticky overlap conflict */}
+      {activeTab !== 'export' && (
+        <header className="md:hidden bg-slate-900 border-b border-slate-800 p-3 sticky top-0 z-50 flex justify-between items-center shadow-lg">
+            <div className="flex items-center gap-2">
+                <div className="bg-red-600 p-1.5 rounded-md text-white">
+                    <ClubLogo size={18} />
+                </div>
+                <div className="leading-none">
+                    <div className="font-black text-white text-sm tracking-tight">ACADEMYVB</div>
+                    <div className="text-[10px] text-slate-400 font-bold truncate max-w-[120px]">
+                        {teams.find(t=>t.id===currentTeamId)?.name}
+                    </div>
+                </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setIsTeamManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700">
+                <Briefcase size={16} />
+              </button>
+              <button onClick={() => setIsLineupManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700">
+                <FolderOpen size={16} />
+              </button>
+            </div>
+        </header>
+      )}
 
       {/* TEAM MANAGER MODAL */}
       {isTeamManagerOpen && (
@@ -1183,35 +1189,44 @@ const App = () => {
             <div className="lg:col-span-6 flex flex-col items-center w-full">
                
                {/* Court Actions Toolbar */}
-               <div className="w-full flex justify-between items-center mb-2 px-1">
+               <div className="w-full flex flex-wrap gap-2 justify-between items-center mb-2 px-1">
                   <div className="flex gap-2">
-                       <button onClick={() => setEnforceRules(!enforceRules)} className={`p-2 rounded-lg border transition-colors ${enforceRules ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
-                           {enforceRules ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
+                       <button onClick={() => setEnforceRules(!enforceRules)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold transition-colors ${enforceRules ? 'bg-emerald-900/30 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+                           {enforceRules ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
+                           <span className="whitespace-nowrap">Overlap Rules</span>
                        </button>
                        <button onClick={undo} disabled={history.length === 0} className={`p-2 rounded-lg border transition-colors ${history.length === 0 ? 'text-slate-600 border-transparent' : 'bg-slate-800 border-slate-700 text-white'}`}>
                            <Undo size={18} />
                        </button>
                   </div>
                   
-                  {/* Drawing Tools Compact */}
-                  <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
-                       <button onClick={() => setMode('move')} className={`p-1.5 rounded-md ${mode === 'move' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Move size={18} /></button>
-                       <button onClick={() => setMode('draw')} className={`p-1.5 rounded-md ${mode === 'draw' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Pencil size={18} /></button>
-                       {mode === 'draw' && (
-                           <div className="flex items-center gap-1 pl-2 border-l border-slate-600 ml-1">
-                                <div className="w-4 h-4 rounded-full bg-black border border-white cursor-pointer" onClick={() => setDrawColor('#000000')} />
-                                <div className="w-4 h-4 rounded-full bg-red-500 border border-white cursor-pointer" onClick={() => setDrawColor('#ef4444')} />
-                           </div>
-                       )}
-                  </div>
+                  <div className="flex items-center gap-2">
+                      {/* Drawing Tools Compact */}
+                      <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+                           <button onClick={() => setMode('move')} className={`p-1.5 rounded-md ${mode === 'move' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Move size={18} /></button>
+                           <button onClick={() => setMode('draw')} className={`p-1.5 rounded-md ${mode === 'draw' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Pencil size={18} /></button>
+                           {mode === 'draw' && (
+                               <div className="flex items-center gap-1 pl-2 border-l border-slate-600 ml-2">
+                                    {['#000000', '#22c55e', '#3b82f6', '#ef4444', '#facc15', '#ffffff'].map(c => (
+                                        <button 
+                                            key={c}
+                                            onClick={() => setDrawColor(c)}
+                                            className={`w-4 h-4 rounded-full border border-white transition-transform hover:scale-125 ${drawColor === c ? 'ring-1 ring-offset-1 ring-white scale-125' : ''}`}
+                                            style={{ backgroundColor: c }}
+                                        />
+                                    ))}
+                               </div>
+                           )}
+                      </div>
 
-                  <button 
-                      onClick={() => handleExport('court-capture-area', `Rotation-${currentRotation}-${currentPhase}`)} 
-                      disabled={isExporting}
-                      className="p-2 bg-slate-800 rounded-lg border border-slate-700 text-white hover:bg-slate-700"
-                  >
-                      {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
-                  </button>
+                      <button 
+                          onClick={() => handleExport('court-capture-area', `Rotation-${currentRotation}-${currentPhase}`)} 
+                          disabled={isExporting}
+                          className="p-2 bg-slate-800 rounded-lg border border-slate-700 text-white hover:bg-slate-700"
+                      >
+                          {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
+                      </button>
+                  </div>
                </div>
 
                <div className="w-full bg-slate-800 p-1 md:p-2 rounded-xl shadow-2xl ring-1 ring-slate-700">
@@ -1316,7 +1331,7 @@ const App = () => {
                         className={`bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm shadow-lg transition-all ${isExporting ? 'opacity-70 cursor-wait' : ''}`}
                     >
                         {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                        {isExporting ? 'Generating...' : 'Download PDF'}
+                        {isExporting ? 'Generating...' : 'Download'}
                     </button>
                 </div>
 
@@ -1348,7 +1363,8 @@ const App = () => {
                             <div key={rot} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
                                 <div className="bg-slate-800 p-3 flex items-center justify-between border-b border-slate-700">
                                     <h3 className="font-black text-white text-lg">Rotation {rot}</h3>
-                                    <div className="w-12 h-12">
+                                    {/* INCREASED SIZE FOR VISIBILITY */}
+                                    <div className="w-20 h-20">
                                         <RotationSquare rotation={rot} roster={roster} />
                                     </div>
                                 </div>
