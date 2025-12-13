@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Users, Pencil, Move, Trash2, Save, Undo, ChevronRight, Eraser, Settings, ShieldCheck, ShieldAlert, GripVertical, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, FileText, Download, LayoutGrid, ClipboardList, Edit3, Briefcase, AlertTriangle } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import { Users, Pencil, Move, Trash2, Save, Undo, ChevronRight, Eraser, Settings, ShieldCheck, ShieldAlert, GripVertical, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, FileText, Download, LayoutGrid, ClipboardList, Edit3, Briefcase, AlertTriangle, Loader2 } from 'lucide-react';
 
 // --- CUSTOM ICONS ---
 const ClubLogo = ({ size = 24, className = "" }) => (
@@ -207,7 +206,6 @@ const Court = ({
       onMouseDown={onMouseDown}
       onTouchStart={onMouseDown}
       id={!small ? "court-capture-area" : undefined}
-      // REMOVED overflow-hidden to allow players to be placed deep/serving without clipping
       className={`relative w-full aspect-square bg-[#f0f4f8] ${!small ? 'shadow-sm border-2 border-slate-900 cursor-crosshair' : 'border border-slate-300'} select-none bg-white`}
       style={{ touchAction: 'none' }}
     >
@@ -227,8 +225,6 @@ const Court = ({
 const PlayerToken = ({ player, x, y, isDragging, isBench, style, small = false, onStartInteraction, isSelected }) => {
   const isGhost = style?.position === 'fixed';
   const sizeClasses = small ? "w-5 h-5 text-[8px] border" : "w-10 h-10 md:w-14 md:h-14 border-2";
-
-  // FIX: Force colored styles even when small, remove 'bg-white' override
   const tokenColorClass = getRoleColor(player.role);
 
   return (
@@ -269,6 +265,7 @@ const App = () => {
   const [mode, setMode] = useState('move'); 
   const [drawColor, setDrawColor] = useState('#000000');
   const [enforceRules, setEnforceRules] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Persistence Keys
   const STORAGE_KEY_TEAMS = 'avb_teams';
@@ -324,7 +321,6 @@ const App = () => {
 
   // --- INITIALIZATION ---
   useEffect(() => {
-    // 1. Load Teams
     const savedTeams = JSON.parse(localStorage.getItem(STORAGE_KEY_TEAMS) || '[]');
     let activeTeamId = localStorage.getItem(STORAGE_KEY_ACTIVE_TEAM);
 
@@ -338,7 +334,6 @@ const App = () => {
     setTeams(initialTeams);
     setCurrentTeamId(activeTeamId || initialTeams[0].id);
 
-    // 2. Load Lineups
     const savedLineups = JSON.parse(localStorage.getItem(STORAGE_KEY_LINEUPS) || '[]');
     let activeLineupId = localStorage.getItem(STORAGE_KEY_ACTIVE_LINEUP);
     
@@ -352,6 +347,14 @@ const App = () => {
         loadLineup(activeLineupId, savedLineups);
     } else {
         createLineup('Lineup 1', initialTeams.find(t => t.id === (activeTeamId || initialTeams[0].id)).roster, activeTeamId || initialTeams[0].id, savedLineups);
+    }
+
+    // Load Html2Canvas
+    if (!window.html2canvas) {
+      const script = document.createElement('script');
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+      script.async = true;
+      document.body.appendChild(script);
     }
   }, []);
 
@@ -565,21 +568,31 @@ const App = () => {
     const element = document.getElementById(elementId);
     if (!element) return;
     
+    if (!window.html2canvas) {
+        alert("Image generation tool is loading. Please wait a moment and try again.");
+        return;
+    }
+
+    setIsExporting(true);
+    
     setTimeout(() => {
-        if (window.html2canvas) {
-          window.html2canvas(element, { 
-              scale: 2, 
-              useCORS: true, 
-              logging: false,
-              backgroundColor: '#ffffff' 
-          }).then(canvas => {
-              const link = document.createElement('a');
-              link.download = `${filename}.png`;
-              link.href = canvas.toDataURL();
-              link.click();
-          });
-        }
-    }, 300);
+        window.html2canvas(element, { 
+            scale: 2, 
+            useCORS: true, 
+            logging: false,
+            backgroundColor: '#ffffff' 
+        }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = `${filename}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+            setIsExporting(false);
+        }).catch(err => {
+            console.error(err);
+            alert("Error generating image.");
+            setIsExporting(false);
+        });
+    }, 100);
   };
 
   // --- HELPERS FOR CONSTRAINTS ---
@@ -608,16 +621,20 @@ const App = () => {
     const padding = 2; 
 
     neighbors.left.forEach(z => {
-        const nId = getPlayerIdInZone(z); if (playerPositions[nId]) limits.minX = Math.max(limits.minX, playerPositions[nId].x + padding);
+        const nId = getPlayerIdInZone(z); 
+        if (nId && playerPositions[nId]) limits.minX = Math.max(limits.minX, playerPositions[nId].x + padding);
     });
     neighbors.right.forEach(z => {
-        const nId = getPlayerIdInZone(z); if (playerPositions[nId]) limits.maxX = Math.min(limits.maxX, playerPositions[nId].x - padding);
+        const nId = getPlayerIdInZone(z); 
+        if (nId && playerPositions[nId]) limits.maxX = Math.min(limits.maxX, playerPositions[nId].x - padding);
     });
     neighbors.front.forEach(z => {
-        const nId = getPlayerIdInZone(z); if (playerPositions[nId]) limits.minY = Math.max(limits.minY, playerPositions[nId].y + padding);
+        const nId = getPlayerIdInZone(z); 
+        if (nId && playerPositions[nId]) limits.minY = Math.max(limits.minY, playerPositions[nId].y + padding);
     });
     neighbors.back.forEach(z => {
-        const nId = getPlayerIdInZone(z); if (playerPositions[nId]) limits.maxY = Math.min(limits.maxY, playerPositions[nId].y - padding);
+        const nId = getPlayerIdInZone(z); 
+        if (nId && playerPositions[nId]) limits.maxY = Math.min(limits.maxY, playerPositions[nId].y - padding);
     });
     return limits;
   };
@@ -1051,9 +1068,11 @@ const App = () => {
                   </button>
                   <button 
                       onClick={() => handleExport('court-capture-area', `Rotation-${currentRotation}-${currentPhase}`)} 
-                      className="text-sm flex items-center gap-2 px-4 py-2 rounded-full font-bold bg-slate-700 text-white hover:bg-slate-600 transition-colors"
+                      disabled={isExporting}
+                      className={`text-sm flex items-center gap-2 px-4 py-2 rounded-full font-bold text-white transition-colors ${isExporting ? 'bg-slate-600 cursor-wait' : 'bg-slate-700 hover:bg-slate-600'}`}
                   >
-                      <Camera size={14} /> Download Image
+                      {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+                      {isExporting ? 'Saving...' : 'Download Image'}
                   </button>
                </div>
 
@@ -1196,9 +1215,11 @@ const App = () => {
                 <div className="fixed bottom-8 right-8 z-[9999]">
                     <button 
                         onClick={() => handleExport('full-report-grid', 'GamePlan-Full')}
-                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-full font-bold flex items-center gap-3 shadow-2xl hover:scale-105 transition-all"
+                        disabled={isExporting}
+                        className={`bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-full font-bold flex items-center gap-3 shadow-2xl hover:scale-105 transition-all ${isExporting ? 'opacity-70 cursor-wait' : ''}`}
                     >
-                        <Download size={24} /> Download Image
+                        {isExporting ? <Loader2 size={24} className="animate-spin" /> : <Download size={24} />}
+                        {isExporting ? 'Generating...' : 'Download Image'}
                     </button>
                 </div>
             </div>
