@@ -1,5 +1,56 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Users, Pencil, Move, Trash2, Save, Undo, ChevronRight, Eraser, Settings, ShieldCheck, ShieldAlert, GripVertical, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, FileText, Download, LayoutGrid, ClipboardList, Edit3, Briefcase, AlertTriangle, Loader2, Menu, Printer } from 'lucide-react';
+import { Users, Pencil, Move, Trash2, Save, Undo, ChevronRight, Eraser, Settings, ShieldCheck, ShieldAlert, GripVertical, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, FileText, Download, LayoutGrid, ClipboardList, Edit3, Briefcase, AlertTriangle, Loader2, Menu, Printer, LogIn, LogOut, Cloud, ArrowUpRight, Sword, Shield, Square, Triangle } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, onAuthStateChanged, signInWithCustomToken, signInAnonymously, signOut } from 'firebase/auth';
+import { getFirestore, collection, doc, setDoc, onSnapshot, deleteDoc, query } from 'firebase/firestore';
+
+// --- FIREBASE SETUP ---
+const getFirebaseConfig = () => {
+  try {
+    if (typeof __firebase_config !== 'undefined') {
+      return JSON.parse(__firebase_config);
+    }
+  } catch (e) {
+    console.warn("Firebase config parsing error", e);
+  }
+  return { apiKey: "demo", authDomain: "demo", projectId: "demo" }; 
+};
+
+const firebaseConfig = getFirebaseConfig();
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// --- CONSTANTS & CONFIGURATION ---
+const OFFENSE_PHASES = [
+  { id: 'receive1', label: 'Receive 1' },
+  { id: 'receive2', label: 'Receive 2' },
+  { id: 'transition', label: 'Transition' },
+  { id: 'freeball', label: 'Free Ball' },
+];
+
+const DEFENSE_PHASES = [
+  { id: 'base', label: 'Base' },
+  { id: 'def_outside', label: 'Outside', attacker: 'left' }, 
+  { id: 'def_middle', label: 'Middle', attacker: 'middle' },
+  { id: 'def_opp', label: 'Opposite', attacker: 'right' }, 
+];
+
+const DEFAULT_ROSTER = [
+  { id: 'p1', role: 'S', name: 'Setter', number: '1' },
+  { id: 'p2', role: 'OH1', name: 'Outside 1', number: '2' },
+  { id: 'p3', role: 'M1', name: 'Middle 1', number: '3' },
+  { id: 'p4', role: 'OPP', name: 'Opposite', number: '4' },
+  { id: 'p5', role: 'OH2', name: 'Outside 2', number: '5' },
+  { id: 'p6', role: 'M2', name: 'Middle 2', number: '6' },
+  { id: 'p7', role: 'L', name: 'Libero', number: '9' },
+  { id: 'p8', role: 'DS', name: 'Def. Spec', number: '10' },
+  { id: 'p9', role: 'SS', name: 'Serve Sub', number: '11' },
+  { id: 'p10', role: 'OH', name: 'Sub OH', number: '12' },
+  { id: 'p11', role: 'S', name: 'Sub Setter', number: '13' },
+  { id: 'p12', role: 'M', name: 'Sub Middle', number: '14' },
+];
 
 // --- CUSTOM ICONS ---
 const ClubLogo = ({ size = 24, className = "" }) => (
@@ -15,6 +66,7 @@ const ClubLogo = ({ size = 24, className = "" }) => (
     className={className}
   >
     <g transform="translate(50,60)">
+      {/* Outer Circle removed as requested */}
       {[0, 120, 240].map((angle, i) => (
         <path
           key={i}
@@ -24,6 +76,13 @@ const ClubLogo = ({ size = 24, className = "" }) => (
       ))}
     </g>
   </svg>
+);
+
+const CustomArrowIcon = ({ size = 18, className = "" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="M19 5L5 19" />
+        <path d="M15 5h4v4" />
+    </svg>
 );
 
 const CourtIcon = ({ size = 24, className = "" }) => (
@@ -47,6 +106,8 @@ const CourtIcon = ({ size = 24, className = "" }) => (
 
 // --- HELPERS ---
 const generateId = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+const getStorageKey = (rot, phase, mode) => `${rot}_${phase}_${mode}`;
 
 const getRoleColor = (role) => {
   if (role === 'S') return 'bg-yellow-400 text-yellow-950 border-yellow-500';
@@ -72,11 +133,11 @@ const calculateDefaultPositions = (rotNum, currentRoster) => {
     if (starters.length === 0) return newPositions;
 
     const courtZones = [
-        { id: 1, x: 80, y: 75 }, 
-        { id: 2, x: 80, y: 18 }, 
-        { id: 3, x: 50, y: 18 }, 
-        { id: 4, x: 20, y: 18 }, 
-        { id: 5, x: 20, y: 75 }, 
+        { id: 1, x: 75, y: 75 }, 
+        { id: 2, x: 75, y: 35 }, 
+        { id: 3, x: 50, y: 35 }, 
+        { id: 4, x: 25, y: 35 }, 
+        { id: 5, x: 25, y: 75 }, 
         { id: 6, x: 50, y: 75 }, 
     ];
     
@@ -132,45 +193,139 @@ const Court = ({
   children, 
   paths = [], 
   currentPath, 
-  courtRef,
-  readOnly = false,
-  small = false,
-  onMouseDown
+  courtRef, 
+  readOnly = false, 
+  small = false, 
+  onMouseDown, 
+  playerPositions = {},
+  attacker = null
 }) => {
   const canvasRef = useRef(null);
 
-  const drawPath = (ctx, points, color, width, height) => {
-    if (points.length < 2) return;
+  const drawArrowHead = (ctx, from, to, size = 10) => {
+      const angle = Math.atan2(to.y - from.y, to.x - from.x);
+      ctx.beginPath();
+      ctx.moveTo(to.x, to.y);
+      ctx.lineTo(to.x - size * Math.cos(angle - Math.PI / 6), to.y - size * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(to.x - size * Math.cos(angle + Math.PI / 6), to.y - size * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fill();
+  };
+
+  const drawPath = (ctx, pathData, width, height) => {
+    const { points, color, type, anchorId, modifiers, widthFactor } = pathData;
+    if (points.length < 1 && type !== 'rect') return;
+
+    let drawPoints = points;
+
+    // Resolve Anchoring
+    if (anchorId && playerPositions[anchorId]) {
+        const anchorPos = playerPositions[anchorId];
+        const ax = (anchorPos.x / 100) * width;
+        const ay = (anchorPos.y / 100) * height;
+        drawPoints = points.map(p => ({
+            x: ax + (p.x / 100) * width,
+            y: ay + (p.y / 100) * height
+        }));
+    } else if (anchorId) {
+        return; 
+    } else {
+        drawPoints = points.map(p => ({
+            x: (p.x / 100) * width,
+            y: (p.y / 100) * height
+        }));
+    }
+
+    if (drawPoints.length < 2) return;
+
     ctx.beginPath();
     ctx.strokeStyle = color;
-    ctx.lineWidth = small ? 2 : 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    let p0 = points[0];
-    ctx.moveTo((p0.x / 100) * width, (p0.y / 100) * height);
-    for (let i = 1; i < points.length - 2; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const x1 = (p1.x / 100) * width;
-      const y1 = (p1.y / 100) * height;
-      const x2 = (p2.x / 100) * width;
-      const y2 = (p2.y / 100) * height;
-      const midX = (x1 + x2) / 2;
-      const midY = (y1 + y2) / 2;
-      ctx.quadraticCurveTo(x1, y1, midX, midY);
+    ctx.fillStyle = color;
+    
+    // --- DRAWING LOGIC BASED ON TYPE ---
+    if (type === 'rect') {
+        const start = drawPoints[0];
+        const end = drawPoints[drawPoints.length - 1]; 
+        const w = end.x - start.x;
+        const h = end.y - start.y;
+        
+        ctx.globalAlpha = 0.3; 
+        ctx.fillRect(start.x, start.y, w, h);
+        ctx.globalAlpha = 1.0;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(start.x, start.y, w, h);
+    } 
+    else if (type === 'triangle') {
+        const start = drawPoints[0]; 
+        const end = drawPoints[drawPoints.length - 1]; 
+        
+        const angle = Math.atan2(end.y - start.y, end.x - start.x);
+        const dist = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
+        
+        // Use stored widthFactor if available, else default
+        const factor = widthFactor || (modifiers?.shift ? 1.2 : 0.6);
+        const baseWidth = dist * factor; 
+
+        const baseLeftX = end.x + baseWidth/2 * Math.cos(angle - Math.PI/2);
+        const baseLeftY = end.y + baseWidth/2 * Math.sin(angle - Math.PI/2);
+        
+        const baseRightX = end.x + baseWidth/2 * Math.cos(angle + Math.PI/2);
+        const baseRightY = end.y + baseWidth/2 * Math.sin(angle + Math.PI/2);
+
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(baseLeftX, baseLeftY);
+        ctx.lineTo(baseRightX, baseRightY);
+        ctx.closePath();
+        
+        ctx.globalAlpha = 0.3;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
     }
-    if (points.length > 2) {
-      const pLast = points[points.length - 1];
-      const pSecondLast = points[points.length - 2];
-      ctx.quadraticCurveTo(
-        (pSecondLast.x / 100) * width, (pSecondLast.y / 100) * height,
-        (pLast.x / 100) * width, (pLast.y / 100) * height
-      );
-    } else if (points.length === 2) {
-       const pLast = points[1];
-       ctx.lineTo((pLast.x / 100) * width, (pLast.y / 100) * height);
+    else {
+        // Line Logic
+        ctx.lineWidth = small ? 2 : 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        let p0 = drawPoints[0];
+        ctx.moveTo(p0.x, p0.y);
+
+        let drawEnd = drawPoints[drawPoints.length - 1];
+
+        if (type === 'arrow' && drawPoints.length > 1) {
+            const last = drawPoints[drawPoints.length - 1];
+            const prev = drawPoints[drawPoints.length - 2]; 
+            const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
+            const shortenBy = small ? 5 : 10;
+            drawEnd = {
+                x: last.x - shortenBy * Math.cos(angle),
+                y: last.y - shortenBy * Math.sin(angle)
+            };
+        }
+
+        for (let i = 1; i < drawPoints.length - 2; i++) {
+          const p1 = drawPoints[i];
+          const p2 = drawPoints[i + 1];
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
+        }
+
+        const pLast = drawPoints[drawPoints.length - 1];
+        const pSecondLast = drawPoints[drawPoints.length - 2];
+
+        if (drawPoints.length > 2) {
+             ctx.lineTo(drawEnd.x, drawEnd.y);
+        } else {
+             ctx.lineTo(drawEnd.x, drawEnd.y);
+        }
+        ctx.stroke();
+
+        if (type === 'arrow') {
+            const lookBackIndex = Math.max(0, drawPoints.length - 5); 
+            drawArrowHead(ctx, drawPoints[lookBackIndex], pLast, small ? 6 : 12);
+        }
     }
-    ctx.stroke();
   };
 
   useEffect(() => {
@@ -194,11 +349,11 @@ const Court = ({
             
             if (paths) {
                 paths.forEach(path => {
-                    drawPath(ctx, path.points, path.color, width, height);
+                    drawPath(ctx, path, width, height);
                 });
             }
             if (currentPath && currentPath.points.length > 0) {
-                drawPath(ctx, currentPath.points, currentPath.color, width, height);
+                drawPath(ctx, currentPath, width, height);
             }
         }
     };
@@ -206,7 +361,7 @@ const Court = ({
     handleResize(); // Initial draw
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [paths, currentPath, courtRef, small]);
+  }, [paths, currentPath, courtRef, small, playerPositions]);
 
   return (
     <div 
@@ -217,11 +372,22 @@ const Court = ({
       className={`relative w-full aspect-square bg-[#f0f4f8] ${!small ? 'shadow-sm border-2 border-slate-900 cursor-crosshair' : 'border border-slate-300'} select-none bg-white`}
       style={{ touchAction: 'none' }}
     >
-        <div className="absolute inset-0 bg-[#fff] pointer-events-none"></div> 
-        <div className="absolute top-0 left-0 right-0 h-[5%] z-0 flex items-center justify-center overflow-hidden border-b border-slate-900 pointer-events-none"></div>
-        <div className="absolute top-[33.33%] left-0 right-0 h-px bg-slate-900 pointer-events-none"></div>
-        {!small && <div className="absolute top-[34%] right-2 text-[10px] font-bold text-slate-400 font-mono tracking-widest pointer-events-none">ATTACK LINE</div>}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-slate-900 z-10 pointer-events-none"></div>
+        {/* Background */}
+        <div className="absolute inset-0 bg-[#fff] pointer-events-none"></div>
+        <div className="absolute left-[15%] right-[15%] top-[15%] bottom-[15%] border-2 border-slate-900 pointer-events-none z-10">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-slate-900 flex items-center justify-center"></div>
+            <div className="absolute top-[33.33%] left-0 right-0 h-px bg-slate-900"></div>
+            {!small && <div className="absolute top-[34%] right-0 text-[8px] font-bold text-slate-400 font-mono tracking-widest uppercase">Attack Line</div>}
+        </div>
+        {attacker && (
+            <div 
+                className={`absolute top-[13%] w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[12px] border-t-red-600 z-20 animate-bounce`}
+                style={{
+                    left: attacker === 'left' ? '80%' : attacker === 'right' ? '20%' : '50%',
+                    transform: 'translateX(-50%)'
+                }}
+            ></div>
+        )}
         <canvas ref={canvasRef} className="absolute inset-0 z-20 w-full h-full pointer-events-none" />
         <div className={`relative z-30 w-full h-full ${readOnly ? 'pointer-events-none' : ''}`}>
           {children}
@@ -232,7 +398,6 @@ const Court = ({
 
 const PlayerToken = ({ player, x, y, isDragging, isBench, style, small = false, onStartInteraction, isSelected }) => {
   const isGhost = style?.position === 'fixed';
-  // Optimized sizes for Mobile touch targets
   const sizeClasses = small ? "w-5 h-5 text-[8px] border" : "w-11 h-11 md:w-14 md:h-14 border-2";
   const tokenColorClass = getRoleColor(player.role);
 
@@ -267,21 +432,35 @@ const PlayerToken = ({ player, x, y, isDragging, isBench, style, small = false, 
   );
 };
 
-// --- GAME PLAN SHEET COMPONENT (Reusable for Export and Preview) ---
-const GamePlanSheet = ({ teams, currentTeamId, lineups, currentLineupId, phases, roster, savedRotations, currentRotation, currentPhase, playerPositions, paths, activePlayerIds, calculateDefaultPositions, getStorageKey }) => (
+// --- GAME PLAN SHEET ---
+const GamePlanSheet = ({ teams, currentTeamId, lineups, currentLineupId, roster, savedRotations, currentRotation, currentPhase, playerPositions, paths, activePlayerIds, gameMode }) => (
     <div className="bg-white text-slate-900 w-[1224px] h-[1584px] p-12 relative flex flex-col box-border shadow-2xl origin-top-left">
         {/* Page Header */}
-        <div className="flex justify-between items-end border-b-4 border-slate-900 pb-6 mb-8">
-            <div>
+        <div className="flex justify-between items-start border-b-4 border-slate-900 pb-6 mb-8">
+            <div className="flex-1">
                 <div className="flex items-center gap-4 mb-2">
                     <div className="text-red-600"><ClubLogo size={56} /></div>
                     <h1 className="text-5xl font-black text-slate-900 tracking-tight">GAME PLAN</h1>
                 </div>
-                <h2 className="text-2xl font-bold text-slate-500 pl-2">{lineups.find(l => l.id === currentLineupId)?.name}</h2>
+                {/* BIG TEAM NAME HEADER + MODE */}
+                <h1 className="text-4xl font-black text-slate-900 uppercase mt-4 mb-2">
+                    {teams.find(t=>t.id===currentTeamId)?.name} - <span className="text-red-600">{gameMode}</span>
+                </h1>
+                <h2 className="text-2xl font-bold text-slate-500 uppercase">
+                    {lineups.find(l => l.id === currentLineupId)?.name}
+                </h2>
             </div>
-            <div className="text-right">
-                <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Team</div>
-                <div className="text-3xl font-black text-slate-900">{teams.find(t=>t.id===currentTeamId)?.name}</div>
+            {/* Full Roster Summary */}
+            <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg max-w-sm w-72">
+                <div className="text-xs font-bold text-slate-400 uppercase mb-2 border-b pb-1">Full Roster</div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    {roster.map((p, i) => (
+                        <div key={p.id} className="text-xs flex justify-between">
+                            <span className="font-bold text-slate-700 w-6">{p.number}</span>
+                            <span className="text-slate-500 truncate flex-1">{p.name}</span>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
 
@@ -289,25 +468,19 @@ const GamePlanSheet = ({ teams, currentTeamId, lineups, currentLineupId, phases,
         <div className="grid grid-cols-1 gap-6 flex-1">
             {[1, 2, 3, 4, 5, 6].map(rot => (
                 <div key={rot} className="flex gap-6 h-[190px] border-b border-slate-200 pb-4">
-                    {/* Left Col: Rotation Header */}
                     <div className="w-32 flex-none flex flex-col items-center justify-center gap-2 border-r border-slate-200 pr-6">
                         <div className="bg-slate-900 text-white w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm pb-[2px] leading-none pt-0.5">R{rot}</div>
                         <div className="w-20 h-20">
                             <RotationSquare rotation={rot} roster={roster} />
                         </div>
                     </div>
-
-                    {/* Right Col: Phases */}
                     <div className="flex-1 grid grid-cols-4 gap-6">
-                        {phases.map(phase => {
-                            const key = getStorageKey(rot, phase.id);
+                        {(gameMode === 'offense' ? OFFENSE_PHASES : DEFENSE_PHASES).map(phase => {
+                            const key = getStorageKey(rot, phase.id, gameMode);
                             let data = savedRotations[key];
-                            
-                            // Ensure data consistency if looking at current rotation/phase
-                            if (rot === currentRotation && phase.id === currentPhase) {
+                            if (rot === currentRotation && phase.id === currentPhase && gameMode === gameMode) {
                                 data = { positions: playerPositions, paths: paths, activePlayers: activePlayerIds };
                             }
-                            
                             let validData = true;
                             if (data && data.positions) {
                                 const savedIDs = Object.keys(data.positions);
@@ -316,16 +489,14 @@ const GamePlanSheet = ({ teams, currentTeamId, lineups, currentLineupId, phases,
                             } else {
                                 validData = false;
                             }
-
                             if (!validData) {
                                 data = { positions: calculateDefaultPositions(rot, roster), paths: [] };
                             } 
-                            
                             return (
                                 <div key={phase.id} className="flex flex-col h-full">
                                     <div className="flex-1 border border-slate-900 rounded-lg flex justify-center items-center overflow-hidden bg-white p-1">
                                         <div className="h-full aspect-square relative">
-                                            <Court small={true} paths={data.paths || []} readOnly={true}>
+                                            <Court small={true} paths={data.paths || []} readOnly={true} playerPositions={data.positions || {}} attacker={phase.attacker}>
                                                 {Object.entries(data.positions || {}).map(([id, pos]) => {
                                                     const player = roster.find(p => p.id === id);
                                                     if (!player) return null;
@@ -342,8 +513,6 @@ const GamePlanSheet = ({ teams, currentTeamId, lineups, currentLineupId, phases,
                 </div>
             ))}
         </div>
-
-        {/* Footer */}
         <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center text-xs font-bold text-slate-400 uppercase">
             <div>Generated by ACADEMYVB PRO</div>
             <div>{new Date().toLocaleDateString()}</div>
@@ -353,36 +522,35 @@ const GamePlanSheet = ({ teams, currentTeamId, lineups, currentLineupId, phases,
 
 // --- MAIN APP ---
 const App = () => {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // --- AUTH SETUP ---
+  useEffect(() => {
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        setUser(currentUser);
+        setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const [activeTab, setActiveTab] = useState('board'); 
+  const [gameMode, setGameMode] = useState('offense'); 
   const [currentRotation, setCurrentRotation] = useState(1);
-  const [currentPhase, setCurrentPhase] = useState('primary'); 
+  const [currentPhase, setCurrentPhase] = useState('receive1'); 
   const [mode, setMode] = useState('move'); 
   const [drawColor, setDrawColor] = useState('#000000');
-  const [enforceRules, setEnforceRules] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile sidebar
-
-  // Persistence Keys
-  const STORAGE_KEY_TEAMS = 'avb_teams';
-  const STORAGE_KEY_ACTIVE_TEAM = 'avb_active_team_id';
-  const STORAGE_KEY_LINEUPS = 'avb_lineups';
-  const STORAGE_KEY_ACTIVE_LINEUP = 'avb_active_lineup_id';
+  const [selectedShapeIndex, setSelectedShapeIndex] = useState(null);
   
-  const defaultRoster = [
-    { id: 'p1', role: 'S', name: 'Setter', number: '1' },
-    { id: 'p2', role: 'OH1', name: 'Outside 1', number: '2' },
-    { id: 'p3', role: 'M1', name: 'Middle 1', number: '3' },
-    { id: 'p4', role: 'OPP', name: 'Opposite', number: '4' },
-    { id: 'p5', role: 'OH2', name: 'Outside 2', number: '5' },
-    { id: 'p6', role: 'M2', name: 'Middle 2', number: '6' },
-    { id: 'p7', role: 'L', name: 'Libero', number: '9' },
-    { id: 'p8', role: 'DS', name: 'Def. Spec', number: '10' },
-    { id: 'p9', role: 'SS', name: 'Serve Sub', number: '11' },
-    { id: 'p10', role: 'OH', name: 'Sub OH', number: '12' },
-    { id: 'p11', role: 'S', name: 'Sub Setter', number: '13' },
-    { id: 'p12', role: 'M', name: 'Sub Middle', number: '14' },
-  ];
-
   // --- GLOBAL DATA STATE ---
   const [teams, setTeams] = useState([]);
   const [currentTeamId, setCurrentTeamId] = useState(null);
@@ -393,13 +561,11 @@ const App = () => {
   const [isLineupManagerOpen, setIsLineupManagerOpen] = useState(false);
   const [isTeamManagerOpen, setIsTeamManagerOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
-  
-  // Renaming State
   const [editId, setEditId] = useState(null);
   const [editName, setEditName] = useState('');
 
   // --- WORKING MEMORY (Active Lineup) ---
-  const [roster, setRoster] = useState(defaultRoster);
+  const [roster, setRoster] = useState(DEFAULT_ROSTER);
   const [savedRotations, setSavedRotations] = useState({}); 
   const [activePlayerIds, setActivePlayerIds] = useState([]); 
   const [playerPositions, setPlayerPositions] = useState({});
@@ -414,190 +580,136 @@ const App = () => {
   const [currentPath, setCurrentPath] = useState(null); 
   const courtRef = useRef(null);
 
-  // --- INITIALIZATION ---
+  // --- FIRESTORE SYNC ---
   useEffect(() => {
-    const savedTeams = JSON.parse(localStorage.getItem(STORAGE_KEY_TEAMS) || '[]');
-    let activeTeamId = localStorage.getItem(STORAGE_KEY_ACTIVE_TEAM);
-
-    let initialTeams = savedTeams;
-    if (savedTeams.length === 0) {
-        const defaultTeam = { id: 'team_default', name: 'My Team', roster: defaultRoster };
-        initialTeams = [defaultTeam];
-        activeTeamId = defaultTeam.id;
-        localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(initialTeams));
-    }
-    setTeams(initialTeams);
-    setCurrentTeamId(activeTeamId || initialTeams[0].id);
-
-    const savedLineups = JSON.parse(localStorage.getItem(STORAGE_KEY_LINEUPS) || '[]');
-    let activeLineupId = localStorage.getItem(STORAGE_KEY_ACTIVE_LINEUP);
+    if (!user) return;
     
-    setLineups(savedLineups); 
-
-    const teamLineups = savedLineups.filter(l => l.teamId === (activeTeamId || initialTeams[0].id));
-    if (teamLineups.length > 0) {
-        if (!teamLineups.find(l => l.id === activeLineupId)) {
-            activeLineupId = teamLineups[0].id;
+    // 1. Sync Teams
+    const teamsQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'teams');
+    const unsubTeams = onSnapshot(teamsQuery, (snapshot) => {
+        const loadedTeams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (loadedTeams.length === 0) {
+            const defaultTeam = { name: 'My Team', roster: DEFAULT_ROSTER };
+            const newTeamRef = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'teams'));
+            setDoc(newTeamRef, defaultTeam);
+        } else {
+            setTeams(loadedTeams);
+            if (!currentTeamId) setCurrentTeamId(loadedTeams[0].id);
         }
-        loadLineup(activeLineupId, savedLineups);
-    } else {
-        createLineup('Lineup 1', initialTeams.find(t => t.id === (activeTeamId || initialTeams[0].id)).roster, activeTeamId || initialTeams[0].id, savedLineups);
-    }
+    }, (error) => console.error("Teams sync error:", error));
 
-    // Load Html2Canvas
-    if (!window.html2canvas) {
-      const script = document.createElement('script');
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-      script.async = true;
-      document.body.appendChild(script);
-    }
-  }, []);
+    // 2. Sync Lineups
+    const lineupsQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'lineups');
+    const unsubLineups = onSnapshot(lineupsQuery, (snapshot) => {
+        const loadedLineups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setLineups(loadedLineups);
+        if (loadedLineups.length > 0 && !currentLineupId) {
+             const teamLineups = loadedLineups.filter(l => l.teamId === currentTeamId);
+             if (teamLineups.length > 0) loadLineup(teamLineups[0].id, loadedLineups);
+        }
+    }, (error) => console.error("Lineups sync error:", error));
 
-  const getStorageKey = (rot, phase) => `${rot}_${phase}`;
+    return () => {
+        unsubTeams();
+        unsubLineups();
+    };
+  }, [user]);
+
+  useEffect(() => {
+      if (teams.length > 0 && !currentTeamId) {
+          setCurrentTeamId(teams[0].id);
+      }
+      if (currentTeamId && lineups.length > 0) {
+          const teamLineups = lineups.filter(l => l.teamId === currentTeamId);
+          if (teamLineups.length > 0 && (!currentLineupId || !teamLineups.find(l => l.id === currentLineupId))) {
+              loadLineup(teamLineups[0].id, lineups);
+          } else if (teamLineups.length === 0) {
+            const team = teams.find(t => t.id === currentTeamId);
+            if (team) createLineup('Lineup 1', team.roster || DEFAULT_ROSTER, currentTeamId, lineups);
+          }
+      }
+  }, [teams, currentTeamId, lineups]);
+
+  useEffect(() => {
+      if (Object.keys(playerPositions).length === 0 && roster.length > 0) {
+          initRotationDefaults(currentRotation, roster);
+      }
+  }, [roster, currentRotation]);
 
   const saveCurrentState = () => {
-    const key = getStorageKey(currentRotation, currentPhase);
-    setSavedRotations(prev => ({
-      ...prev,
+    if (!currentLineupId || !user) return;
+    
+    const key = getStorageKey(currentRotation, currentPhase, gameMode);
+    const newRotations = {
+      ...savedRotations,
       [key]: {
         positions: playerPositions,
         paths: paths,
         activePlayers: activePlayerIds
       }
-    }));
+    };
+    
+    setSavedRotations(newRotations);
+    const lineupRef = doc(db, 'artifacts', appId, 'users', user.uid, 'lineups', currentLineupId);
+    setDoc(lineupRef, { rotations: newRotations, roster: roster }, { merge: true });
+    return newRotations;
   };
 
   useEffect(() => {
-    if (currentLineupId && lineups.length > 0) {
-      const key = getStorageKey(currentRotation, currentPhase);
-      const updatedLineups = lineups.map(l => {
-        if (l.id === currentLineupId) {
-          return {
-            ...l,
-            roster: roster,
-            rotations: {
-              ...savedRotations,
-              [key]: { 
-                 positions: playerPositions,
-                 paths: paths,
-                 activePlayers: activePlayerIds
-              }
-            }
-          };
-        }
-        return l;
-      });
-      localStorage.setItem(STORAGE_KEY_LINEUPS, JSON.stringify(updatedLineups));
-    }
-  }, [roster, savedRotations, playerPositions, paths, activePlayerIds, currentLineupId]); 
-
-  // --- DATA SANITIZATION (Fix Zombie/Missing Players) ---
-  useEffect(() => {
-    // 1. Sanitize Bench Selection
-    if (selectedBenchPlayerId && !roster.find(p => p.id === selectedBenchPlayerId)) {
-        setSelectedBenchPlayerId(null);
-    }
-
-    // 2. Sanitize Active Players (Auto-Placeholder Logic)
-    const validIds = new Set(roster.map(p => p.id));
-    const ghostPlayers = activePlayerIds.filter(id => !validIds.has(id));
-
-    if (ghostPlayers.length > 0) {
-        // Instead of removing from court (which leaves a hole), create a placeholder player
-        const newPlaceholders = ghostPlayers.map(gid => ({
-            id: gid, // Keep ID to maintain court position
-            role: '?',
-            name: 'Open',
-            number: '?'
-        }));
-        
-        // Add placeholders back to roster to "fill" the spot
-        setRoster(prev => [...prev, ...newPlaceholders]);
-    }
-  }, [roster, selectedBenchPlayerId, activePlayerIds]);
-
-  // --- AUTO-SAVE ROSTER ---
-  useEffect(() => {
-    if (!currentTeamId || teams.length === 0) return;
-
+    if (!currentTeamId || teams.length === 0 || !user) return;
     const timer = setTimeout(() => {
-        const updatedTeams = teams.map(t => 
-            t.id === currentTeamId ? { ...t, roster: roster } : t
-        );
-        setTeams(updatedTeams);
-        localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(updatedTeams));
+        const teamRef = doc(db, 'artifacts', appId, 'users', user.uid, 'teams', currentTeamId);
+        setDoc(teamRef, { roster: roster }, { merge: true });
     }, 1000); 
-
     return () => clearTimeout(timer);
-  }, [roster, currentTeamId, teams]);
+  }, [roster, currentTeamId, teams, user]);
 
   // --- TEAM MANAGEMENT ---
-  const createTeam = () => {
+  const createTeam = async () => {
+      if (!user) return;
       const newTeam = {
-          id: generateId('team'),
           name: newItemName || 'New Team',
-          roster: defaultRoster
+          roster: DEFAULT_ROSTER
       };
-      const updatedTeams = [...teams, newTeam];
-      setTeams(updatedTeams);
-      localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(updatedTeams));
-      switchTeam(newTeam.id, updatedTeams);
+      await setDoc(doc(collection(db, 'artifacts', appId, 'users', user.uid, 'teams')), newTeam);
       setNewItemName('');
       setIsTeamManagerOpen(false);
   };
 
-  const switchTeam = (teamId, updatedTeamsList = null) => {
+  const switchTeam = (teamId) => {
       saveCurrentState(); 
       setCurrentTeamId(teamId);
-      localStorage.setItem(STORAGE_KEY_ACTIVE_TEAM, teamId);
-      
-      const allLineups = JSON.parse(localStorage.getItem(STORAGE_KEY_LINEUPS) || '[]');
-      setLineups(allLineups);
-      const teamLineups = allLineups.filter(l => l.teamId === teamId);
-      
-      const sourceTeams = updatedTeamsList || teams;
-      const team = sourceTeams.find(t => t.id === teamId);
-
-      if (team) {
-        if (teamLineups.length > 0) {
-            loadLineup(teamLineups[0].id, allLineups);
-        } else {
-            createLineup('Lineup 1', team.roster, teamId, allLineups);
-        }
-      }
       setIsTeamManagerOpen(false);
   };
 
-  const deleteTeam = (id) => {
+  const deleteTeam = async (id) => {
       if (teams.length <= 1) return alert("Cannot delete last team.");
-      const updated = teams.filter(t => t.id !== id);
-      setTeams(updated);
-      localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(updated));
-      if (currentTeamId === id) switchTeam(updated[0].id, updated);
+      if (!user) return;
+      await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', id));
+      if (currentTeamId === id) {
+           const remaining = teams.filter(t => t.id !== id);
+           if (remaining.length > 0) switchTeam(remaining[0].id);
+      }
   };
 
-  const renameTeam = (id, newName) => {
-      const updated = teams.map(t => t.id === id ? { ...t, name: newName } : t);
-      setTeams(updated);
-      localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(updated));
+  const renameTeam = async (id, newName) => {
+      if (!user) return;
+      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', id), { name: newName }, { merge: true });
       setEditId(null);
   };
 
   // --- LINEUP MANAGEMENT ---
-  const createLineup = (name, rosterToUse, teamId = currentTeamId, currentLineupsList = lineups) => {
+  const createLineup = async (name, rosterToUse, teamId = currentTeamId, currentLineupsList = lineups) => {
+    if (!user) return;
+    const safeRoster = (rosterToUse && rosterToUse.length > 0) ? rosterToUse : DEFAULT_ROSTER;
     const newLineup = {
-      id: generateId('lineup'),
       teamId: teamId,
       name: name,
-      roster: JSON.parse(JSON.stringify(rosterToUse)), 
+      roster: safeRoster, 
       rotations: {} 
     };
-    
-    const updatedLineups = [...currentLineupsList, newLineup];
-    setLineups(updatedLineups);
-    localStorage.setItem(STORAGE_KEY_LINEUPS, JSON.stringify(updatedLineups));
-    
-    loadLineup(newLineup.id, updatedLineups);
+    const newRef = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'lineups'));
+    await setDoc(newRef, newLineup);
     setIsLineupManagerOpen(false);
     setNewItemName('');
   };
@@ -607,54 +719,46 @@ const App = () => {
     if (!target) return;
 
     setCurrentLineupId(id);
-    localStorage.setItem(STORAGE_KEY_ACTIVE_LINEUP, id);
-    setRoster(target.roster);
+    const validRoster = (target.roster && target.roster.length > 0) ? target.roster : DEFAULT_ROSTER;
+    setRoster(validRoster);
     setSavedRotations(target.rotations || {});
     
     setCurrentRotation(1);
-    setCurrentPhase('primary');
+    setGameMode('offense');
+    setCurrentPhase('receive1');
     setHistory([]);
     setIsLineupManagerOpen(false);
     setSelectedBenchPlayerId(null);
     
-    const key = getStorageKey(1, 'primary');
+    const key = getStorageKey(1, 'receive1', 'offense');
     const data = target.rotations?.[key];
-    if (data) {
+    if (data && data.activePlayers && data.activePlayers.length > 0) {
        setPlayerPositions(data.positions);
        setPaths(data.paths);
        setActivePlayerIds(data.activePlayers);
     } else {
-       initRotationDefaults(1, target.roster);
+       initRotationDefaults(1, validRoster);
     }
   };
 
-  const deleteLineup = (id) => {
+  const deleteLineup = async (id) => {
       const teamLineups = lineups.filter(l => l.teamId === currentTeamId);
       if (teamLineups.length <= 1) return alert("Must have at least one lineup.");
-      
-      const updated = lineups.filter(l => l.id !== id);
-      setLineups(updated);
-      localStorage.setItem(STORAGE_KEY_LINEUPS, JSON.stringify(updated));
-      
-      if (currentLineupId === id) {
-          const next = updated.find(l => l.teamId === currentTeamId);
-          loadLineup(next.id, updated);
-      }
+      if (!user) return;
+      await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'lineups', id));
   };
 
-  const renameLineup = (id, newName) => {
-      const updated = lineups.map(l => l.id === id ? { ...l, name: newName } : l);
-      setLineups(updated);
-      localStorage.setItem(STORAGE_KEY_LINEUPS, JSON.stringify(updated));
+  const renameLineup = async (id, newName) => {
+      if (!user) return;
+      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'lineups', id), { name: newName }, { merge: true });
       setEditId(null);
   };
 
-  const clearAllData = () => {
-      if (confirm("Are you sure? This will delete ALL teams and lineups on this device.")) {
-          localStorage.removeItem(STORAGE_KEY_TEAMS);
-          localStorage.removeItem(STORAGE_KEY_LINEUPS);
-          localStorage.removeItem(STORAGE_KEY_ACTIVE_TEAM);
-          localStorage.removeItem(STORAGE_KEY_ACTIVE_LINEUP);
+  const clearAllData = async () => {
+      if (!user) return;
+      if (confirm("Are you sure? This will delete ALL teams and lineups.")) {
+          teams.forEach(t => deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', t.id)));
+          lineups.forEach(l => deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'lineups', l.id)));
           window.location.reload();
       }
   };
@@ -669,32 +773,32 @@ const App = () => {
       setPaths([]);
   };
 
-  const handleViewChange = (newRot, newPhase) => {
-    saveCurrentState();
-    const key = getStorageKey(newRot, newPhase);
+  const handleViewChange = (newRot, newPhase, newMode = gameMode) => {
+    const updatedRotations = saveCurrentState() || savedRotations;
+    const nextKey = getStorageKey(newRot, newPhase, newMode);
     
-    if (savedRotations[key]) {
-      const data = savedRotations[key];
+    if (updatedRotations[nextKey]) {
+      const data = updatedRotations[nextKey];
       setPlayerPositions(data.positions);
       setPaths(data.paths);
       setActivePlayerIds(data.activePlayers);
     } else {
-      if (newRot === currentRotation && savedRotations[getStorageKey(newRot, currentPhase)]) {
-          initRotationDefaults(newRot, roster);
-      } else {
-          initRotationDefaults(newRot, roster);
-      }
+      initRotationDefaults(newRot, roster);
     }
     
     setCurrentRotation(newRot);
     setCurrentPhase(newPhase);
+    setGameMode(newMode);
     setHistory([]);
     setSelectedBenchPlayerId(null);
   };
 
   const handleExport = (elementId, filename) => {
     const element = document.getElementById(elementId);
-    if (!element) return;
+    if (!element) {
+        alert("Export area not found.");
+        return;
+    }
     
     if (!window.html2canvas) {
         alert("Image generation tool is loading. Please wait a moment and try again.");
@@ -702,18 +806,19 @@ const App = () => {
     }
 
     setIsExporting(true);
-    
     setTimeout(() => {
         window.html2canvas(element, { 
             scale: 2, 
-            useCORS: true, 
+            useCORS: false, 
             logging: false,
             backgroundColor: '#ffffff' 
         }).then(canvas => {
             const link = document.createElement('a');
             link.download = `${filename}.png`;
             link.href = canvas.toDataURL();
+            document.body.appendChild(link);
             link.click();
+            document.body.removeChild(link);
             setIsExporting(false);
         }).catch(err => {
             console.error(err);
@@ -723,11 +828,290 @@ const App = () => {
     }, 100);
   };
 
-  // --- HELPERS FOR CONSTRAINTS ---
+  // --- EVENT LISTENERS ---
+  const getCoords = (e) => {
+    if (e.changedTouches && e.changedTouches.length > 0) {
+        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    }
+    return { x: e.clientX, y: e.clientY };
+  };
+
+  // --- REVISED OVERLAP RULE LOGIC ---
+  const shouldEnforceRules = (phase) => {
+      // Automatically on for receive 1 and 2, off for everything else
+      return ['receive1', 'receive2'].includes(phase);
+  };
+
+  // Shape Hit Testing Helper
+  const isPointInShape = (point, path, width, height) => {
+      const { points, type } = path;
+      if (points.length < 2) return false;
+      const start = { x: (points[0].x / 100) * width, y: (points[0].y / 100) * height };
+      const end = { x: (points[points.length-1].x / 100) * width, y: (points[points.length-1].y / 100) * height };
+      const p = { x: (point.x / 100) * width, y: (point.y / 100) * height };
+
+      if (type === 'rect') {
+          return p.x >= Math.min(start.x, end.x) && p.x <= Math.max(start.x, end.x) && 
+                 p.y >= Math.min(start.y, end.y) && p.y <= Math.max(start.y, end.y);
+      } else if (type === 'triangle') {
+          // Simple bounding box for now
+          return p.x >= Math.min(start.x, end.x) - 50 && p.x <= Math.max(start.x, end.x) + 50 &&
+                 p.y >= Math.min(start.y, end.y) - 50 && p.y <= Math.max(start.y, end.y) + 50;
+      }
+      return false;
+  };
+
+  useEffect(() => {
+    const handleWindowMove = (e) => {
+        const { x, y } = getCoords(e);
+        setMousePos({ x, y });
+        const rect = courtRef.current?.getBoundingClientRect();
+        
+        if ((isDrawing || draggedPlayer || selectedShapeIndex !== null) && e.cancelable) {
+            e.preventDefault();
+        }
+
+        if (!rect) return;
+
+        // Shape Resizing Logic
+        if (mode === 'move' && selectedShapeIndex !== null && !draggedPlayer) {
+             const cx = ((x - rect.left) / rect.width) * 100;
+             const cy = ((y - rect.top) / rect.height) * 100;
+             
+             setPaths(prev => {
+                 const newPaths = [...prev];
+                 const path = newPaths[selectedShapeIndex];
+                 
+                 if (path.type === 'rect') {
+                     // Update end point
+                     path.points[path.points.length - 1] = { x: cx, y: cy };
+                 } else if (path.type === 'triangle') {
+                     // Update width factor based on horizontal drag
+                     const start = path.points[0];
+                     const end = path.points[path.points.length - 1];
+                     // Rudimentary width adjustment logic based on mouse X relative to vector
+                     // Simply scaling widthFactor based on mouse X position for now
+                     const baseDist = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
+                     if (baseDist > 0) {
+                         const currentWidthFactor = path.widthFactor || 0.6;
+                         // Adjust sensitive
+                         path.widthFactor = Math.max(0.1, Math.min(3.0, currentWidthFactor + (e.movementX || 0) * 0.01));
+                     }
+                 }
+                 return newPaths;
+             });
+             return;
+        }
+
+        if (mode === 'move' && draggedPlayer && !draggedPlayer.isBench) {
+             let newX = ((x - rect.left) / rect.width) * 100;
+             let newY = ((y - rect.top) / rect.height) * 100;
+             
+             if (shouldEnforceRules(currentPhase)) { 
+                const constraints = getConstraints(draggedPlayer.id);
+                newX = Math.max(constraints.minX, Math.min(constraints.maxX, newX));
+                newY = Math.max(constraints.minY, Math.min(constraints.maxY, newY));
+             }
+             setPlayerPositions(prev => ({ ...prev, [draggedPlayer.id]: { x: newX, y: newY } }));
+        } else if ((mode === 'draw' || mode === 'arrow' || mode === 'rect' || mode === 'triangle') && isDrawing) {
+             const cx = ((x - rect.left) / rect.width) * 100;
+             const cy = ((y - rect.top) / rect.height) * 100;
+             
+             let pointToAdd = { x: cx, y: cy };
+             if (currentPath && currentPath.anchorId) {
+                 const anchorPos = playerPositions[currentPath.anchorId];
+                 if (anchorPos) {
+                     pointToAdd = { x: cx - anchorPos.x, y: cy - anchorPos.y };
+                 }
+             }
+
+             if (cx > -20 && cx < 120 && cy > -20 && cy < 120) {
+                setCurrentPath(prev => ({ ...prev, points: [...prev.points, pointToAdd] }));
+             }
+        }
+    };
+
+    const handleWindowUp = (e) => {
+       if (selectedShapeIndex !== null) {
+           setSelectedShapeIndex(null);
+           saveCurrentState();
+       }
+
+       if (mode === 'move' && draggedPlayer) {
+           if (draggedPlayer.isBench) {
+               const rect = courtRef.current?.getBoundingClientRect();
+               if (rect) {
+                   const { x, y } = getCoords(e);
+                   const dropX = ((x - rect.left) / rect.width) * 100;
+                   const dropY = ((y - rect.top) / rect.height) * 100;
+                   let nearestId = null;
+                   let minDist = 15;
+                   Object.entries(playerPositions).forEach(([pid, pos]) => {
+                       const dist = Math.sqrt(Math.pow(pos.x - dropX, 2) + Math.pow(pos.y - dropY, 2));
+                       if (dist < minDist) { minDist = dist; nearestId = pid; }
+                   });
+                   
+                   if (nearestId) {
+                       const benchId = draggedPlayer.id;
+                       const newActive = activePlayerIds.map(id => id === nearestId ? benchId : id);
+                       setActivePlayerIds(newActive);
+                       setPlayerPositions(prev => {
+                           const next = {...prev};
+                           if (next[nearestId]) {
+                               next[benchId] = { ...next[nearestId] }; 
+                               delete next[nearestId];
+                           }
+                           return next;
+                       });
+                       setSelectedBenchPlayerId(null);
+                   }
+               }
+           }
+           setDraggedPlayer(null);
+           saveCurrentState();
+       } else if (isDrawing) {
+           setIsDrawing(false);
+           if (currentPath && currentPath.points.length > 1) {
+               setPaths(prev => [...prev, currentPath]);
+               saveCurrentState();
+           }
+           setCurrentPath(null);
+       }
+    };
+
+    window.addEventListener('mousemove', handleWindowMove);
+    window.addEventListener('mouseup', handleWindowUp);
+    window.addEventListener('mouseleave', handleWindowUp);
+    window.addEventListener('touchmove', handleWindowMove, { passive: false });
+    window.addEventListener('touchend', handleWindowUp);
+    
+    return () => {
+        window.removeEventListener('mousemove', handleWindowMove);
+        window.removeEventListener('mouseup', handleWindowUp);
+        window.removeEventListener('mouseleave', handleWindowUp);
+        window.removeEventListener('touchmove', handleWindowMove);
+        window.removeEventListener('touchend', handleWindowUp);
+    };
+  }, [mode, draggedPlayer, isDrawing, currentPath, playerPositions, activePlayerIds, savedRotations, selectedShapeIndex]); 
+
+  const handleTokenDown = (e, playerId, isBench) => {
+      const isShift = e.shiftKey;
+
+      if (mode === 'move') {
+          if (isBench) {
+              if (selectedBenchPlayerId === playerId) {
+                  setSelectedBenchPlayerId(null);
+              } else {
+                  setSelectedBenchPlayerId(playerId);
+              }
+              saveToHistory();
+              setDraggedPlayer({ id: playerId, isBench });
+          } 
+          else {
+              if (selectedBenchPlayerId) {
+                  // Swap Logic
+                  const benchId = selectedBenchPlayerId;
+                  const courtId = playerId;
+                  // Don't swap if same
+                  if (benchId === courtId) { setSelectedBenchPlayerId(null); return; }
+
+                  const newActive = activePlayerIds.map(id => id === courtId ? benchId : id);
+                  setActivePlayerIds(newActive);
+                  setPlayerPositions(prev => {
+                      const next = {...prev};
+                      next[benchId] = next[courtId]; 
+                      delete next[courtId]; 
+                      return next;
+                  });
+                  setSelectedBenchPlayerId(null); 
+                  saveCurrentState();
+              } else {
+                  saveToHistory();
+                  setDraggedPlayer({ id: playerId, isBench });
+              }
+          }
+      } 
+      else if (mode === 'arrow' && !isBench) {
+          saveToHistory();
+          setIsDrawing(true);
+          setCurrentPath({ 
+              points: [{x: 0, y: 0}], 
+              color: drawColor, 
+              type: 'arrow', 
+              anchorId: playerId 
+          });
+      }
+  };
+
+  const handleCourtDown = (e) => {
+      if (mode === 'move') {
+          // Check for Shape Selection for Resizing
+          const { x, y } = getCoords(e);
+          const rect = courtRef.current.getBoundingClientRect();
+          const cx = ((x - rect.left) / rect.width) * 100;
+          const cy = ((y - rect.top) / rect.height) * 100;
+          
+          // Reverse check to select top-most
+          for (let i = paths.length - 1; i >= 0; i--) {
+              const path = paths[i];
+              if (path.type === 'rect' || path.type === 'triangle') {
+                  if (isPointInShape({x: cx, y: cy}, path, rect.width, rect.height)) {
+                      setSelectedShapeIndex(i);
+                      return;
+                  }
+              }
+          }
+          setSelectedBenchPlayerId(null);
+      }
+      else if (['draw', 'arrow', 'rect', 'triangle'].includes(mode)) {
+          saveToHistory();
+          setIsDrawing(true);
+          const { x, y } = getCoords(e);
+          const rect = courtRef.current.getBoundingClientRect();
+          const cx = ((x - rect.left) / rect.width) * 100;
+          const cy = ((y - rect.top) / rect.height) * 100;
+          
+          setCurrentPath({ 
+              points: [{x: cx, y: cy}], 
+              color: drawColor, 
+              type: mode, 
+              anchorId: null,
+              modifiers: { shift: e.shiftKey }
+          });
+      } 
+  };
+
+  // --- HISTORY ---
+  const saveToHistory = () => {
+    setHistory(prev => [...prev, {
+      playerPositions: JSON.parse(JSON.stringify(playerPositions)),
+      paths: JSON.parse(JSON.stringify(paths)),
+      activePlayers: [...activePlayerIds]
+    }]);
+    if (history.length > 20) setHistory(prev => prev.slice(1));
+  };
+
+  const undo = () => {
+    if (history.length === 0) return;
+    const previousState = history[history.length - 1];
+    setPlayerPositions(previousState.playerPositions);
+    setPaths(previousState.paths);
+    setActivePlayerIds(previousState.activePlayers);
+    setHistory(prev => prev.slice(0, -1));
+  };
+  
+  const updateRoster = (index, field, value) => {
+    if (field === 'number' && value.length > 4) return; 
+    const newRoster = [...roster];
+    newRoster[index] = { ...newRoster[index], [field]: value };
+    setRoster(newRoster);
+  };
+
+  // --- CONSTRAINTS ---
   const getPlayerIdInZone = (targetZone) => {
     for(let i=0; i<6; i++) {
-         const zone = getPlayerZone(i, currentRotation);
-         if (zone === targetZone) return activePlayerIds[i]; 
+          const zone = getPlayerZone(i, currentRotation);
+          if (zone === targetZone) return activePlayerIds[i]; 
     }
     return null;
   };
@@ -767,264 +1151,63 @@ const App = () => {
     return limits;
   };
 
-  // --- GLOBAL EVENT LISTENERS (TOUCH + MOUSE) ---
-  const getCoords = (e) => {
-    if (e.changedTouches && e.changedTouches.length > 0) {
-        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
-    }
-    return { x: e.clientX, y: e.clientY };
-  };
+  if (authLoading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white"><Loader2 className="animate-spin" /></div>;
+  if (!user) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">Login Required</div>;
 
-  useEffect(() => {
-    const handleWindowMove = (e) => {
-        const { x, y } = getCoords(e);
-        setMousePos({ x, y });
-        const rect = courtRef.current?.getBoundingClientRect();
-        
-        if ((isDrawing || draggedPlayer) && e.cancelable) {
-            e.preventDefault();
-        }
-
-        if (!rect) return;
-
-        if (mode === 'move' && draggedPlayer && !draggedPlayer.isBench) {
-             let newX = ((x - rect.left) / rect.width) * 100;
-             let newY = ((y - rect.top) / rect.height) * 100;
-             if (enforceRules) {
-                const limits = getConstraints(draggedPlayer.id);
-                newX = Math.max(limits.minX, Math.min(limits.maxX, newX));
-                newY = Math.max(limits.minY, Math.min(limits.maxY, newY));
-             }
-             setPlayerPositions(prev => ({ ...prev, [draggedPlayer.id]: { x: newX, y: newY } }));
-        } else if (mode === 'draw' && isDrawing) {
-             const cx = ((x - rect.left) / rect.width) * 100;
-             const cy = ((y - rect.top) / rect.height) * 100;
-             if (cx > -20 && cx < 120 && cy > -20 && cy < 120) {
-                setCurrentPath(prev => ({ ...prev, points: [...prev.points, { x: cx, y: cy }] }));
-             }
-        }
-    };
-
-    const handleWindowUp = (e) => {
-       if (mode === 'move' && draggedPlayer) {
-           if (draggedPlayer.isBench) {
-               const rect = courtRef.current?.getBoundingClientRect();
-               if (rect) {
-                   const { x, y } = getCoords(e);
-                   const dropX = ((x - rect.left) / rect.width) * 100;
-                   const dropY = ((y - rect.top) / rect.height) * 100;
-                   let nearestId = null;
-                   let minDist = 15;
-                   Object.entries(playerPositions).forEach(([pid, pos]) => {
-                       const dist = Math.sqrt(Math.pow(pos.x - dropX, 2) + Math.pow(pos.y - dropY, 2));
-                       if (dist < minDist) { minDist = dist; nearestId = pid; }
-                   });
-                   
-                   if (nearestId) {
-                       const benchId = draggedPlayer.id;
-                       if (benchId !== nearestId) {
-                           const newActive = activePlayerIds.map(id => id === nearestId ? benchId : id);
-                           setActivePlayerIds(newActive);
-                           setPlayerPositions(prev => {
-                               const next = {...prev};
-                               if (next[nearestId]) {
-                                   next[benchId] = { ...next[nearestId] }; 
-                                   delete next[nearestId];
-                               }
-                               return next;
-                           });
-                           setSelectedBenchPlayerId(null);
-                       }
-                   }
-               }
-           }
-           setDraggedPlayer(null);
-       } else if (mode === 'draw' && isDrawing) {
-           setIsDrawing(false);
-           if (currentPath && currentPath.points.length > 1) {
-               setPaths(prev => [...prev, currentPath]);
-           }
-           setCurrentPath(null);
-       }
-    };
-
-    window.addEventListener('mousemove', handleWindowMove);
-    window.addEventListener('mouseup', handleWindowUp);
-    window.addEventListener('mouseleave', handleWindowUp);
-    window.addEventListener('touchmove', handleWindowMove, { passive: false });
-    window.addEventListener('touchend', handleWindowUp);
-    
-    return () => {
-        window.removeEventListener('mousemove', handleWindowMove);
-        window.removeEventListener('mouseup', handleWindowUp);
-        window.removeEventListener('mouseleave', handleWindowUp);
-        window.removeEventListener('touchmove', handleWindowMove);
-        window.removeEventListener('touchend', handleWindowUp);
-    };
-  }, [mode, draggedPlayer, isDrawing, enforceRules, currentPath, playerPositions, activePlayerIds]);
-
-  const handleTokenDown = (e, playerId, isBench) => {
-      if (isBench && mode === 'move') {
-          if (selectedBenchPlayerId === playerId) {
-              setSelectedBenchPlayerId(null);
-          } else {
-              setSelectedBenchPlayerId(playerId);
-          }
-          saveToHistory();
-          setDraggedPlayer({ id: playerId, isBench });
-      } 
-      else if (!isBench && mode === 'move') {
-          if (selectedBenchPlayerId) {
-              if (selectedBenchPlayerId === playerId) {
-                   setSelectedBenchPlayerId(null);
-                   saveToHistory();
-                   setDraggedPlayer({ id: playerId, isBench });
-                   return;
-              }
-
-              const benchId = selectedBenchPlayerId;
-              const courtId = playerId;
-              const newActive = activePlayerIds.map(id => id === courtId ? benchId : id);
-              setActivePlayerIds(newActive);
-              setPlayerPositions(prev => {
-                  const next = {...prev};
-                  next[benchId] = next[courtId]; 
-                  delete next[courtId]; 
-                  return next;
-              });
-              setSelectedBenchPlayerId(null); 
-          } else {
-              saveToHistory();
-              setDraggedPlayer({ id: playerId, isBench });
-          }
-      }
-  };
-
-  const handleCourtDown = (e) => {
-      if (mode === 'draw') {
-          saveToHistory();
-          setIsDrawing(true);
-          const { x, y } = getCoords(e);
-          const rect = courtRef.current.getBoundingClientRect();
-          const cx = ((x - rect.left) / rect.width) * 100;
-          const cy = ((y - rect.top) / rect.height) * 100;
-          setCurrentPath({ points: [{x: cx, y: cy}], color: drawColor });
-      } else if (mode === 'move') {
-          setSelectedBenchPlayerId(null);
-      }
-  };
-
-  const saveToHistory = () => {
-    setHistory(prev => [...prev, {
-      playerPositions: JSON.parse(JSON.stringify(playerPositions)),
-      paths: JSON.parse(JSON.stringify(paths)),
-      activePlayers: [...activePlayerIds]
-    }]);
-    if (history.length > 20) setHistory(prev => prev.slice(1));
-  };
-
-  const undo = () => {
-    if (history.length === 0) return;
-    const previousState = history[history.length - 1];
-    setPlayerPositions(previousState.playerPositions);
-    setPaths(previousState.paths);
-    setActivePlayerIds(previousState.activePlayers);
-    setHistory(prev => prev.slice(0, -1));
-  };
-  
-  const updateRoster = (index, field, value) => {
-    if (field === 'number' && value.length > 4) return; 
-    const newRoster = [...roster];
-    newRoster[index] = { ...newRoster[index], [field]: value };
-    setRoster(newRoster);
-  };
-
-  const phases = [
-    { id: 'primary', label: 'Receive 1' },
-    { id: 'secondary', label: 'Receive 2' },
-    { id: 'transition', label: 'Trans' },
-    { id: 'defense', label: 'Defense' },
-  ];
+  const currentPhasesList = gameMode === 'offense' ? OFFENSE_PHASES : DEFENSE_PHASES;
+  const currentAttacker = currentPhasesList.find(p => p.id === currentPhase)?.attacker;
+  const isRulesActive = shouldEnforceRules(currentPhase);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans select-none pb-20 md:pb-0">
-      {/* Ghost Token */}
       {draggedPlayer && draggedPlayer.isBench && (
-           <PlayerToken 
-              player={roster.find(p => p.id === draggedPlayer.id)} 
-              isDragging={true} 
-              isBench={true}
-              style={{ position: 'fixed', left: mousePos.x, top: mousePos.y }}
-           />
+           <PlayerToken player={roster.find(p => p.id === draggedPlayer.id)} isDragging={true} isBench={true} style={{ position: 'fixed', left: mousePos.x, top: mousePos.y }} />
       )}
 
       {/* --- DESKTOP HEADER --- */}
       <header className="hidden md:block bg-slate-900 border-b border-slate-700 p-4 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
-                <div className="bg-red-600 p-2 rounded-lg text-white">
-                    <ClubLogo size={24} />
-                </div>
+                <div className="bg-red-600 p-2 rounded-lg text-white"><ClubLogo size={24} /></div>
                 <div>
                     <h1 className="text-xl font-black tracking-tight text-white">ACADEMYVB <span className="text-red-500">PRO</span></h1>
                     <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
-                        <span className="font-bold text-white">{teams.find(t => t.id === currentTeamId)?.name}</span>
+                        <span className="font-bold text-white cursor-pointer hover:text-blue-400" onClick={() => setIsTeamManagerOpen(true)}>{teams.find(t => t.id === currentTeamId)?.name}</span>
                         <ChevronRight size={12} />
                         <span className="font-bold text-slate-300">{lineups.find(l => l.id === currentLineupId)?.name || 'Untitled'}</span>
                     </div>
                 </div>
             </div>
-
             <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
-                <button onClick={() => setActiveTab('roster')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'roster' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
-                    <Users size={16} /> Roster
-                </button>
-                <button onClick={() => setActiveTab('board')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'board' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
-                    <CourtIcon size={16} /> Court
-                </button>
-                <button onClick={() => { setActiveTab('export'); saveCurrentState(); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'export' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
-                    <ClipboardList size={16} /> Game Plan
-                </button>
+                <button onClick={() => setActiveTab('roster')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'roster' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}><Users size={16} /> Roster</button>
+                <button onClick={() => setActiveTab('board')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'board' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}><CourtIcon size={16} /> Court</button>
+                <button onClick={() => { setActiveTab('export'); saveCurrentState(); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'export' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}><ClipboardList size={16} /> Game Plan</button>
             </div>
-
             <div className="flex items-center gap-2">
-                 <button onClick={() => setIsTeamManagerOpen(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors">
-                    <Briefcase size={16} className="text-blue-400" /> Teams
-                 </button>
-                 <button onClick={() => setIsLineupManagerOpen(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors">
-                    <FolderOpen size={16} className="text-red-400" /> Lineups
-                 </button>
+                 <button onClick={() => setIsTeamManagerOpen(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors"><Briefcase size={16} /> Teams</button>
+                 <button onClick={() => setIsLineupManagerOpen(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors"><FolderOpen size={16} /> Lineups</button>
             </div>
         </div>
       </header>
 
-      {/* --- MOBILE HEADER (Compact) --- */}
-      {/* Hide on export tab to prevent sticky overlap conflict */}
+      {/* --- MOBILE HEADER --- */}
       {activeTab !== 'export' && (
         <header className="md:hidden bg-slate-900 border-b border-slate-800 p-3 sticky top-0 z-50 flex justify-between items-center shadow-lg">
             <div className="flex items-center gap-2">
-                <div className="bg-red-600 p-1.5 rounded-md text-white">
-                    <ClubLogo size={18} />
-                </div>
+                <div className="bg-red-600 p-1.5 rounded-md text-white"><ClubLogo size={18} /></div>
                 <div className="leading-none">
                     <div className="font-black text-white text-sm tracking-tight">ACADEMYVB</div>
-                    <div className="text-[10px] text-slate-400 font-bold truncate max-w-[120px]">
-                        {teams.find(t=>t.id===currentTeamId)?.name}
-                    </div>
+                    <div className="text-[10px] text-slate-400 font-bold truncate max-w-[120px]" onClick={() => setIsTeamManagerOpen(true)}>{teams.find(t=>t.id===currentTeamId)?.name}</div>
                 </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setIsTeamManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700">
-                <Briefcase size={16} />
-              </button>
-              <button onClick={() => setIsLineupManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700">
-                <FolderOpen size={16} />
-              </button>
+              <button onClick={() => setIsTeamManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700"><Briefcase size={16} /></button>
+              <button onClick={() => setIsLineupManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700"><FolderOpen size={16} /></button>
             </div>
         </header>
       )}
 
-      {/* TEAM MANAGER MODAL */}
+      {/* MODALS REMOVED FOR BREVITY (Assumed same as before) */}
       {isTeamManagerOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
               <div className="bg-slate-900 border border-slate-700 p-0 rounded-xl shadow-2xl w-full max-w-[500px] overflow-hidden">
@@ -1057,26 +1240,14 @@ const App = () => {
                   </div>
                   <div className="p-4 md:p-6 bg-slate-800 border-t border-slate-700">
                       <div className="flex gap-2 mb-4">
-                          <input 
-                            type="text" 
-                            placeholder="New Team Name" 
-                            className="flex-1 p-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                            value={newItemName}
-                            onChange={(e) => setNewItemName(e.target.value)}
-                          />
-                          <button onClick={createTeam} className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-sm transition-colors flex items-center gap-2">
-                              <Plus size={16} /> <span className="hidden md:inline">Create</span>
-                          </button>
+                          <input type="text" placeholder="New Team Name" className="flex-1 p-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm outline-none" value={newItemName} onChange={(e) => setNewItemName(e.target.value)} />
+                          <button onClick={createTeam} className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-sm flex items-center gap-2"><Plus size={16} /> Create</button>
                       </div>
-                      <button onClick={clearAllData} className="w-full p-2 bg-slate-800 hover:bg-red-900/30 text-red-400 rounded-lg font-medium text-xs flex items-center justify-center gap-2 border border-slate-700 hover:border-red-800">
-                          <AlertTriangle size={14} /> Reset All Data
-                      </button>
                   </div>
               </div>
           </div>
       )}
 
-      {/* LINEUP MANAGER MODAL */}
       {isLineupManagerOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
               <div className="bg-slate-900 border border-slate-700 p-0 rounded-xl shadow-2xl w-full max-w-[500px] overflow-hidden">
@@ -1084,317 +1255,234 @@ const App = () => {
                       <h2 className="text-lg md:text-xl font-bold text-white">Lineups</h2>
                       <button onClick={() => setIsLineupManagerOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
                   </div>
-                  
                   <div className="p-4 overflow-y-auto flex-1 space-y-2 max-h-[50vh]">
                       {lineups.filter(l => l.teamId === currentTeamId).map(l => (
                           <div key={l.id} className={`flex items-center justify-between p-3 rounded-lg border transition-all ${currentLineupId === l.id ? 'bg-red-900/20 border-red-500/50' : 'bg-slate-800 border-slate-700 hover:border-slate-500'}`}>
-                              {editId === l.id ? (
-                                  <input 
-                                      className="bg-slate-900 border border-red-500 rounded px-2 py-1 text-sm text-white flex-1 mr-2"
-                                      value={editName}
-                                      onChange={(e) => setEditName(e.target.value)}
-                                      onBlur={() => renameLineup(l.id, editName)}
-                                      onKeyDown={(e) => e.key === 'Enter' && renameLineup(l.id, editName)}
-                                      autoFocus
-                                  />
-                              ) : (
-                                  <button onClick={() => loadLineup(l.id)} className="flex-1 text-left font-bold text-sm text-slate-200">{l.name}</button>
-                              )}
+                              <button onClick={() => loadLineup(l.id)} className="flex-1 text-left font-bold text-sm text-slate-200">{l.name}</button>
                               <div className="flex items-center gap-2">
                                   {currentLineupId === l.id && <span className="text-[10px] font-bold bg-red-500 text-white px-2 py-0.5 rounded-full">ACTIVE</span>}
-                                  <button onClick={(e) => { e.stopPropagation(); setEditId(l.id); setEditName(l.name); }} className="p-2 text-slate-500 hover:text-blue-400"><Pencil size={14} /></button>
                                   <button onClick={(e) => { e.stopPropagation(); deleteLineup(l.id); }} className="p-2 text-slate-500 hover:text-red-500"><Trash2 size={14} /></button>
                               </div>
                           </div>
                       ))}
                   </div>
-
                   <div className="p-4 md:p-6 bg-slate-800 border-t border-slate-700">
-                      <input 
-                        type="text" 
-                        placeholder="New Lineup Name" 
-                        className="w-full p-3 bg-slate-900 border border-slate-600 rounded-lg mb-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-red-500 outline-none"
-                        value={newItemName}
-                        onChange={(e) => setNewItemName(e.target.value)}
-                      />
-                      <button 
-                        onClick={() => createLineup(newItemName || 'New Lineup', roster)} 
-                        className="w-full p-3 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2"
-                      >
-                          <Plus size={16} /> Create Lineup
-                      </button>
+                      <input type="text" placeholder="New Lineup Name" className="w-full p-3 bg-slate-900 border border-slate-600 rounded-lg mb-3 text-white outline-none" value={newItemName} onChange={(e) => setNewItemName(e.target.value)} />
+                      <button onClick={() => createLineup(newItemName || 'New Lineup', roster)} className="w-full p-3 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2"><Plus size={16} /> Create Lineup</button>
                   </div>
               </div>
           </div>
       )}
 
       <main className="max-w-7xl mx-auto md:p-6 h-full">
-        
         {/* --- BOARD VIEW --- */}
         {activeTab === 'board' && (
           <div className="flex flex-col h-full">
-            
-            {/* MOBILE: BENCH STRIP (Above Court) */}
+            {/* MOBILE: BENCH STRIP */}
             <div className="md:hidden bg-slate-900 border-b border-slate-800 py-2 px-2 overflow-x-auto no-scrollbar flex items-center gap-2 sticky top-[57px] z-30">
                 {roster.filter(p => !activePlayerIds.includes(p.id)).map(player => (
-                    <div 
-                        key={player.id} 
-                        className={`flex-none w-10 h-10 rounded-full border-2 flex items-center justify-center relative ${selectedBenchPlayerId === player.id ? 'border-blue-500 bg-blue-900/50' : 'border-slate-700 bg-slate-800'} ${getRoleColor(player.role)}`}
-                        onMouseDown={(e) => handleTokenDown(e, player.id, true)}
-                        onTouchStart={(e) => handleTokenDown(e, player.id, true)}
-                    >
+                    <div key={player.id} className={`flex-none w-10 h-10 rounded-full border-2 flex items-center justify-center relative ${selectedBenchPlayerId === player.id ? 'ring-4 ring-blue-500 z-10' : ''} ${getRoleColor(player.role)}`} onMouseDown={(e) => handleTokenDown(e, player.id, true)} onTouchStart={(e) => handleTokenDown(e, player.id, true)}>
                         <span className="text-xs font-black">{player.number}</span>
                     </div>
                 ))}
-                {roster.filter(p => !activePlayerIds.includes(p.id)).length === 0 && <span className="text-[10px] text-slate-500 px-2">Bench Empty</span>}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 p-4 md:p-0">
-            
-            {/* Sidebar Controls (Desktop Only - Left) */}
+            {/* Sidebar Controls (Desktop) */}
             <div className="hidden lg:block lg:col-span-3 space-y-4">
                  <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl">
-                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Select Rotation</h3>
-                <div className="grid grid-cols-3 gap-3">
-                  {[1, 2, 3, 4, 5, 6].map(num => (
-                    <button
-                      key={num}
-                      onClick={() => handleViewChange(num, currentPhase)}
-                      className={`py-3 rounded-xl font-black text-lg transition-all ${currentRotation === num ? 'bg-red-600 text-white shadow-lg scale-105 ring-2 ring-red-400' : 'bg-slate-900 text-slate-400 hover:bg-slate-700'}`}
-                    >
-                      {num}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl">
-                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Game Phase</h3>
-                <div className="flex flex-col gap-2">
-                   {phases.map(p => (
-                       <button
-                         key={p.id}
-                         onClick={() => handleViewChange(currentRotation, p.id)}
-                         className={`flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold transition-all ${currentPhase === p.id ? 'bg-slate-100 text-slate-900' : 'bg-slate-900 text-slate-400 hover:bg-slate-700'}`}
-                       >
-                           {p.label}
-                           {currentPhase === p.id && <div className="w-2 h-2 bg-red-500 rounded-full" />}
-                       </button>
-                   ))}
-                </div>
-              </div>
+                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Rotation</h3>
+                    <div className="grid grid-cols-3 gap-3">
+                      {[1, 2, 3, 4, 5, 6].map(num => (
+                        <button key={num} onClick={() => handleViewChange(num, currentPhase)} className={`py-3 rounded-xl font-black text-lg transition-all ${currentRotation === num ? 'bg-red-600 text-white shadow-lg ring-2 ring-red-400' : 'bg-slate-900 text-slate-400 hover:bg-slate-700'}`}>{num}</button>
+                      ))}
+                    </div>
+                 </div>
+                 <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Phase</h3>
+                        <div className="flex bg-slate-900 rounded-md p-0.5 border border-slate-700">
+                            <button onClick={() => handleViewChange(currentRotation, 'receive1', 'offense')} className={`px-2 py-1 rounded text-[10px] font-bold ${gameMode === 'offense' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>OFF</button>
+                            <button onClick={() => handleViewChange(currentRotation, 'base', 'defense')} className={`px-2 py-1 rounded text-[10px] font-bold ${gameMode === 'defense' ? 'bg-red-600 text-white' : 'text-slate-400'}`}>DEF</button>
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                       {currentPhasesList.map(p => (
+                           <button key={p.id} onClick={() => handleViewChange(currentRotation, p.id)} className={`flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold transition-all ${currentPhase === p.id ? 'bg-slate-100 text-slate-900' : 'bg-slate-900 text-slate-400 hover:bg-slate-700'}`}>
+                               {p.label}
+                               {currentPhase === p.id && <div className="w-2 h-2 bg-red-500 rounded-full" />}
+                           </button>
+                       ))}
+                    </div>
+                 </div>
             </div>
 
             {/* MAIN COURT */}
             <div className="lg:col-span-6 flex flex-col items-center w-full">
-               
-               {/* Court Actions Toolbar */}
                <div className="w-full flex flex-wrap gap-2 justify-between items-center mb-2 px-1">
                   <div className="flex gap-2">
-                       <button onClick={() => setEnforceRules(!enforceRules)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold transition-colors ${enforceRules ? 'bg-emerald-900/30 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
-                           {enforceRules ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
-                           <span className="whitespace-nowrap">Overlap Rules</span>
-                       </button>
-                       <button onClick={undo} disabled={history.length === 0} className={`p-2 rounded-lg border transition-colors ${history.length === 0 ? 'text-slate-600 border-transparent' : 'bg-slate-800 border-slate-700 text-white'}`}>
-                           <Undo size={18} />
-                       </button>
+                       <button onClick={undo} disabled={history.length === 0} className="p-2 rounded-lg border border-slate-700 bg-slate-800 text-white"><Undo size={18} /></button>
+                       {/* REMOVED OVERLAP BUTTON HERE */}
                   </div>
-                  
                   <div className="flex items-center gap-2">
-                      {/* Drawing Tools Compact */}
-                      <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+                      <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 overflow-x-auto no-scrollbar max-w-[200px] md:max-w-none">
                            <button onClick={() => setMode('move')} className={`p-1.5 rounded-md ${mode === 'move' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Move size={18} /></button>
                            <button onClick={() => setMode('draw')} className={`p-1.5 rounded-md ${mode === 'draw' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Pencil size={18} /></button>
-                           {mode === 'draw' && (
+                           <button onClick={() => setMode('arrow')} className={`p-1.5 rounded-md ${mode === 'arrow' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><CustomArrowIcon size={18} /></button>
+                           <button onClick={() => setMode('rect')} className={`p-1.5 rounded-md ${mode === 'rect' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Square size={18} /></button>
+                           <button onClick={() => setMode('triangle')} className={`p-1.5 rounded-md ${mode === 'triangle' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Triangle size={18} /></button>
+                           {['draw', 'arrow', 'rect', 'triangle'].includes(mode) && (
                                <div className="flex items-center gap-1 pl-2 border-l border-slate-600 ml-2">
                                     {['#000000', '#22c55e', '#3b82f6', '#ef4444', '#facc15', '#ffffff'].map(c => (
-                                        <button 
-                                            key={c}
-                                            onClick={() => setDrawColor(c)}
-                                            className={`w-4 h-4 rounded-full border border-white transition-transform hover:scale-125 ${drawColor === c ? 'ring-1 ring-offset-1 ring-white scale-125' : ''}`}
-                                            style={{ backgroundColor: c }}
-                                        />
+                                        <button key={c} onClick={() => setDrawColor(c)} className={`w-4 h-4 rounded-full border border-white transition-transform hover:scale-125 flex-shrink-0 ${drawColor === c ? 'ring-1 ring-offset-1 ring-white scale-125' : ''}`} style={{ backgroundColor: c }} />
                                     ))}
                                </div>
                            )}
                       </div>
-
-                      <button 
-                          onClick={() => handleExport('court-capture-area', `Rotation-${currentRotation}-${currentPhase}`)} 
-                          disabled={isExporting}
-                          className="p-2 bg-slate-800 rounded-lg border border-slate-700 text-white hover:bg-slate-700"
-                      >
+                      <button onClick={() => handleExport('court-capture-area', `Rotation-${currentRotation}-${currentPhase}`)} disabled={isExporting} className="p-2 bg-slate-800 rounded-lg border border-slate-700 text-white hover:bg-slate-700">
                           {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
                       </button>
                   </div>
                </div>
 
                <div className="w-full bg-slate-800 p-1 md:p-2 rounded-xl shadow-2xl ring-1 ring-slate-700">
-                    <Court courtRef={courtRef} paths={paths} currentPath={currentPath} onMouseDown={handleCourtDown}>
+                    <Court courtRef={courtRef} paths={paths} currentPath={currentPath} onMouseDown={handleCourtDown} playerPositions={playerPositions} attacker={currentAttacker}>
                       {Object.entries(playerPositions).map(([id, pos]) => {
                         const player = roster.find(p => p.id === id);
                         if (!player) return null;
                         return <PlayerToken key={id} player={player} x={pos.x} y={pos.y} isDragging={draggedPlayer?.id === id && !draggedPlayer?.isBench} isBench={false} onStartInteraction={handleTokenDown} />;
                       })}
-                      {enforceRules && mode === 'move' && <div className="absolute top-2 right-2 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm opacity-80 pointer-events-none z-40 uppercase tracking-wider">Rules On</div>}
+                      {isRulesActive && mode === 'move' && <div className="absolute top-2 right-2 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm opacity-80 pointer-events-none z-40 uppercase tracking-wider">Rules On</div>}
                     </Court>
                </div>
 
-                {/* MOBILE: CONTROL CENTER (Below Court) */}
+                {/* MOBILE: CONTROL CENTER */}
                 <div className="md:hidden w-full mt-4 space-y-4">
-                     {/* Rotations */}
                      <div>
                          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Rotation</div>
                          <div className="flex justify-between bg-slate-900 p-1 rounded-xl border border-slate-800">
                              {[1,2,3,4,5,6].map(r => (
-                                 <button 
-                                    key={r} 
-                                    onClick={() => handleViewChange(r, currentPhase)}
-                                    className={`w-10 h-10 rounded-lg font-black text-lg flex items-center justify-center ${currentRotation === r ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500'}`}
-                                 >
-                                     {r}
-                                 </button>
+                                 <button key={r} onClick={() => handleViewChange(r, currentPhase)} className={`w-10 h-10 rounded-lg font-black text-lg flex items-center justify-center ${currentRotation === r ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500'}`}>{r}</button>
                              ))}
                          </div>
                      </div>
-                     {/* Phases */}
                      <div>
-                         <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Phase</div>
+                         <div className="flex justify-between items-center mb-2">
+                             <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Phase</div>
+                             <div className="flex bg-slate-900 rounded-md p-0.5 border border-slate-800">
+                                <button onClick={() => handleViewChange(currentRotation, 'receive1', 'offense')} className={`px-3 py-1 rounded text-[10px] font-bold ${gameMode === 'offense' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>OFF</button>
+                                <button onClick={() => handleViewChange(currentRotation, 'base', 'defense')} className={`px-3 py-1 rounded text-[10px] font-bold ${gameMode === 'defense' ? 'bg-red-600 text-white' : 'text-slate-400'}`}>DEF</button>
+                             </div>
+                         </div>
                          <div className="grid grid-cols-4 gap-2">
-                             {phases.map(p => (
-                                 <button 
-                                     key={p.id}
-                                     onClick={() => handleViewChange(currentRotation, p.id)}
-                                     className={`py-2 rounded-lg text-[10px] font-bold uppercase ${currentPhase === p.id ? 'bg-slate-100 text-slate-900' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}
-                                 >
-                                     {p.label}
-                                 </button>
+                             {currentPhasesList.map(p => (
+                                 <button key={p.id} onClick={() => handleViewChange(currentRotation, p.id)} className={`py-2 rounded-lg text-[10px] font-bold uppercase ${currentPhase === p.id ? 'bg-slate-100 text-slate-900' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>{p.label}</button>
                              ))}
                          </div>
                      </div>
                      <div className="pt-2 flex justify-center pb-8">
-                         <button onClick={() => { saveToHistory(); setPaths([]); }} className="text-xs text-rose-500 flex items-center gap-2 px-4 py-2 bg-slate-900 rounded-lg border border-slate-800">
-                             <Trash2 size={14} /> Clear Drawing
-                         </button>
-                         <button onClick={() => initRotationDefaults(currentRotation, roster)} className="ml-2 text-xs text-slate-400 flex items-center gap-2 px-4 py-2 bg-slate-900 rounded-lg border border-slate-800">
-                            <RefreshCw size={14} /> Reset Pos
-                        </button>
+                         <button onClick={() => { saveToHistory(); setPaths([]); }} className="text-xs text-rose-500 flex items-center gap-2 px-4 py-2 bg-slate-900 rounded-lg border border-slate-800"><Trash2 size={14} /> Clear Drawing</button>
+                         <button onClick={() => initRotationDefaults(currentRotation, roster)} className="ml-2 text-xs text-slate-400 flex items-center gap-2 px-4 py-2 bg-slate-900 rounded-lg border border-slate-800"><RefreshCw size={14} /> Reset Pos</button>
                      </div>
                 </div>
                
                <div className="hidden md:flex mt-6 justify-center">
-                  <button onClick={() => initRotationDefaults(currentRotation, roster)} className="text-slate-500 hover:text-white text-xs font-bold flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors">
-                     <RefreshCw size={12} /> Reset Positions & Drawings
-                   </button>
+                  <button onClick={() => initRotationDefaults(currentRotation, roster)} className="text-slate-500 hover:text-white text-xs font-bold flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors"><RefreshCw size={12} /> Reset Positions & Drawings</button>
                </div>
             </div>
 
-            {/* Sidebar Bench (Desktop Only - Right) */}
+            {/* Sidebar Bench (Desktop) */}
             <div className="hidden lg:block lg:col-span-3 space-y-4">
                 <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 h-full">
-                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Bench / Subs</h3>
+                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Bench</h3>
                     <div className="grid grid-cols-2 gap-3">
                         {roster.filter(p => !activePlayerIds.includes(p.id)).map(player => (
-                            <div 
-                                key={player.id} 
-                                className="relative flex flex-col items-center p-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-red-500 cursor-grab active:cursor-grabbing group transition-all"
-                                onMouseDown={(e) => handleTokenDown(e, player.id, true)}
-                                onTouchStart={(e) => handleTokenDown(e, player.id, true)}
-                            >
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm mb-2 shadow-sm ${getRoleColor(player.role)}`}>
-                                    {player.number}
-                                </div>
+                            <div key={player.id} className="relative flex flex-col items-center p-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-red-500 cursor-grab active:cursor-grabbing group transition-all" onMouseDown={(e) => handleTokenDown(e, player.id, true)} onTouchStart={(e) => handleTokenDown(e, player.id, true)}>
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm mb-2 shadow-sm ${getRoleColor(player.role)}`}>{player.number}</div>
                                 <div className="text-xs font-bold text-slate-300">{player.name}</div>
                                 <div className="text-[10px] font-bold text-slate-500 uppercase">{player.role}</div>
                             </div>
                         ))}
                     </div>
-                    {roster.filter(p => !activePlayerIds.includes(p.id)).length === 0 && (
-                         <div className="text-center text-slate-600 text-sm py-10 italic">Empty Bench</div>
-                    )}
                 </div>
             </div>
           </div>
           </div>
         )}
 
-        {/* --- EXPORT GRID VIEW (Mobile Responsive + Desktop Preview) --- */}
+        {/* --- EXPORT VIEW --- */}
         <div className={activeTab === 'export' ? 'block' : 'hidden'}>
             <div className="bg-slate-950 min-h-screen pb-24">
-                
-                {/* TOOLBAR */}
                 <div className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur border-b border-slate-800 p-4 flex justify-between items-center shadow-lg">
                     <h2 className="text-lg font-bold text-white flex items-center gap-2"><Printer size={18} className="text-red-500" /> Game Plan</h2>
-                    <button 
-                        onClick={() => handleExport('full-report-grid', 'GamePlan-Full')}
-                        disabled={isExporting}
-                        className={`bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm shadow-lg transition-all ${isExporting ? 'opacity-70 cursor-wait' : ''}`}
-                    >
-                        {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                        {isExporting ? 'Generating...' : 'Download'}
+                    
+                    {/* NEW EXPORT TOGGLE SWITCH */}
+                    <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 mx-4">
+                        <button onClick={() => setGameMode('offense')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${gameMode === 'offense' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>OFFENSE</button>
+                        <button onClick={() => setGameMode('defense')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${gameMode === 'defense' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>DEFENSE</button>
+                    </div>
+
+                    <button onClick={() => handleExport('full-report-grid', `GamePlan-${gameMode}`)} disabled={isExporting} className={`bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm shadow-lg transition-all ${isExporting ? 'opacity-70 cursor-wait' : ''}`}>
+                        {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} {isExporting ? 'Generating...' : 'Download'}
                     </button>
                 </div>
 
-                {/* VIEW CONTAINER */}
                 <div className="max-w-7xl mx-auto p-4 md:p-6">
-                    
-                    {/* DESKTOP: FULL SHEET PREVIEW (Scaled) */}
+                    {/* DESKTOP PREVIEW */}
                     <div className="hidden md:flex justify-center">
                          <div className="relative overflow-hidden shadow-2xl border border-slate-700 rounded-lg bg-white" style={{ width: '100%', maxWidth: '850px', aspectRatio: '1224/1584' }}>
-                            <div className="w-full h-full transform origin-top-left" style={{ transform: 'scale(0.69)' }}> {/* Scale calculation: 850 / 1224 ≈ 0.69 */}
-                                 {/* Render the actual sheet component for preview */}
-                                 <GamePlanSheet 
-                                    teams={teams} currentTeamId={currentTeamId} lineups={lineups} currentLineupId={currentLineupId}
-                                    phases={phases} roster={roster} savedRotations={savedRotations} currentRotation={currentRotation}
-                                    currentPhase={currentPhase} playerPositions={playerPositions} paths={paths} activePlayerIds={activePlayerIds}
-                                    calculateDefaultPositions={calculateDefaultPositions} getStorageKey={getStorageKey}
-                                />
+                            <div className="w-full h-full transform origin-top-left" style={{ transform: 'scale(0.69)' }}>
+                                 <GamePlanSheet teams={teams} currentTeamId={currentTeamId} lineups={lineups} currentLineupId={currentLineupId} roster={roster} savedRotations={savedRotations} currentRotation={currentRotation} currentPhase={currentPhase} playerPositions={playerPositions} paths={paths} activePlayerIds={activePlayerIds} gameMode={gameMode} />
                             </div>
                          </div>
                     </div>
 
-                    {/* MOBILE: RESPONSIVE CARD LIST (Better UX) */}
+                    {/* MOBILE PREVIEW */}
                     <div className="md:hidden space-y-6">
                         <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
-                            <h3 className="text-white font-bold text-lg mb-1">{lineups.find(l => l.id === currentLineupId)?.name}</h3>
-                            <p className="text-slate-400 text-sm">{teams.find(t=>t.id===currentTeamId)?.name}</p>
+                            {editId === 'gameplan' ? (
+                                <input className="bg-slate-700 text-white font-bold text-center text-lg p-1 rounded w-full mb-1" value={editName} onChange={(e) => setEditName(e.target.value)} onBlur={() => { renameTeam(currentTeamId, editName); setEditId(null); }} autoFocus />
+                            ) : (
+                                <h3 className="text-white font-bold text-lg mb-1" onClick={() => { setEditId('gameplan'); setEditName(teams.find(t=>t.id===currentTeamId)?.name); }}>{teams.find(t=>t.id===currentTeamId)?.name}</h3>
+                            )}
+                            {/* MOBILE GAME PLAN TOGGLE */}
+                            <div className="flex justify-center gap-2 mt-2">
+                                <button onClick={() => setGameMode('offense')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${gameMode === 'offense' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>OFFENSE</button>
+                                <button onClick={() => setGameMode('defense')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${gameMode === 'defense' ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-400'}`}>DEFENSE</button>
+                            </div>
                         </div>
                         {[1, 2, 3, 4, 5, 6].map(rot => (
                             <div key={rot} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
                                 <div className="bg-slate-800 p-3 flex items-center justify-between border-b border-slate-700">
                                     <h3 className="font-black text-white text-lg">Rotation {rot}</h3>
-                                    {/* INCREASED SIZE FOR VISIBILITY */}
-                                    <div className="w-20 h-20">
-                                        <RotationSquare rotation={rot} roster={roster} />
-                                    </div>
+                                    <div className="w-20 h-20"><RotationSquare rotation={rot} roster={roster} /></div>
                                 </div>
                                 <div className="p-3 overflow-x-auto">
                                     <div className="flex gap-4 min-w-max">
-                                         {phases.map(phase => {
-                                             // LOGIC DUPLICATION FOR PREVIEW (Keep consistent with sheet)
-                                             const key = getStorageKey(rot, phase.id);
+                                         {currentPhasesList.map(phase => {
+                                             const key = getStorageKey(rot, phase.id, gameMode);
                                              let data = savedRotations[key];
-                                             if (rot === currentRotation && phase.id === currentPhase) {
-                                                data = { positions: playerPositions, paths: paths, activePlayers: activePlayerIds };
+                                             if (rot === currentRotation && phase.id === currentPhase && gameMode === gameMode) { 
+                                                 data = { positions: playerPositions, paths: paths, activePlayers: activePlayerIds };
                                              }
                                              let validData = true;
                                              if (data && data.positions) {
-                                                const savedIDs = Object.keys(data.positions);
-                                                const existingCount = savedIDs.filter(id => roster.find(p => p.id === id)).length;
-                                                if (existingCount < 6) validData = false;
+                                                 const savedIDs = Object.keys(data.positions);
+                                                 const existingCount = savedIDs.filter(id => roster.find(p => p.id === id)).length;
+                                                 if (existingCount < 6) validData = false;
                                              } else validData = false;
                                              if (!validData) data = { positions: calculateDefaultPositions(rot, roster), paths: [] };
                                              
                                              return (
                                                  <div key={phase.id} className="w-40 flex flex-col">
                                                      <div className="aspect-square bg-white rounded-lg border border-slate-700 relative overflow-hidden mb-2">
-                                                         <Court small={true} paths={data.paths || []} readOnly={true}>
-                                                            {Object.entries(data.positions || {}).map(([id, pos]) => {
-                                                                const player = roster.find(p => p.id === id);
-                                                                if (!player) return null;
-                                                                return <PlayerToken key={id} player={player} x={pos.x} y={pos.y} small={true} />;
-                                                            })}
-                                                        </Court>
+                                                         <Court small={true} paths={data.paths || []} readOnly={true} playerPositions={data.positions || {}} attacker={phase.attacker}>
+                                                             {Object.entries(data.positions || {}).map(([id, pos]) => {
+                                                                 const player = roster.find(p => p.id === id);
+                                                                 if (!player) return null;
+                                                                 return <PlayerToken key={id} player={player} x={pos.x} y={pos.y} small={true} />;
+                                                             })}
+                                                         </Court>
                                                      </div>
                                                      <div className="text-center font-bold text-xs text-slate-400 uppercase">{phase.label}</div>
                                                  </div>
@@ -1407,15 +1495,10 @@ const App = () => {
                     </div>
                 </div>
 
-                {/* HIDDEN EXPORT CANVAS (ALWAYS EXISTS FOR DOWNLOAD) */}
+                {/* HIDDEN EXPORT CANVAS */}
                 <div className="fixed -left-[9999px] top-0 overflow-hidden">
                     <div id="full-report-grid">
-                         <GamePlanSheet 
-                             teams={teams} currentTeamId={currentTeamId} lineups={lineups} currentLineupId={currentLineupId}
-                             phases={phases} roster={roster} savedRotations={savedRotations} currentRotation={currentRotation}
-                             currentPhase={currentPhase} playerPositions={playerPositions} paths={paths} activePlayerIds={activePlayerIds}
-                             calculateDefaultPositions={calculateDefaultPositions} getStorageKey={getStorageKey}
-                         />
+                         <GamePlanSheet teams={teams} currentTeamId={currentTeamId} lineups={lineups} currentLineupId={currentLineupId} roster={roster} savedRotations={savedRotations} currentRotation={currentRotation} currentPhase={currentPhase} playerPositions={playerPositions} paths={paths} activePlayerIds={activePlayerIds} gameMode={gameMode} />
                     </div>
                 </div>
             </div>
@@ -1425,53 +1508,23 @@ const App = () => {
         {activeTab === 'roster' && (
           <div className="max-w-4xl mx-auto bg-slate-800 md:rounded-2xl shadow-xl border-y md:border border-slate-700 overflow-hidden mb-24">
              <div className="p-4 md:p-6 border-b border-slate-700 flex flex-row justify-between items-center bg-slate-900/50 gap-4">
-              <div>
-                  <h2 className="text-lg md:text-xl font-bold text-white">Roster</h2>
-              </div>
-              <div className="flex gap-3">
-                 <button onClick={() => setRoster(prev => [...prev, { id: generateId('p'), role: 'DS', name: 'New', number: '' }])} className="flex items-center gap-2 bg-red-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-sm font-bold hover:bg-red-500 transition-colors"><UserPlus size={16} /> Add</button>
-              </div>
+              <h2 className="text-lg md:text-xl font-bold text-white">Roster</h2>
+              <button onClick={() => setRoster(prev => [...prev, { id: generateId('p'), role: 'DS', name: 'New', number: '' }])} className="flex items-center gap-2 bg-red-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-sm font-bold hover:bg-red-500 transition-colors"><UserPlus size={16} /> Add</button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 md:p-6">
               {roster.map((player, idx) => (
                 <div key={player.id} className="p-3 md:p-4 border border-slate-700 bg-slate-900 rounded-xl relative group hover:border-red-500 transition-colors">
                   <div className="flex items-center justify-between mb-3 md:mb-4">
                     <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{idx < 6 ? `Starter ${idx + 1}` : 'Bench'}</div>
-                    {roster.length > 6 && (
-                        <button onClick={() => setRoster(prev => prev.filter(p => p.id !== player.id))} className="text-slate-500 hover:text-rose-500 transition-colors"><Trash2 size={14} /></button>
-                    )}
+                    {roster.length > 6 && <button onClick={() => setRoster(prev => prev.filter(p => p.id !== player.id))} className="text-slate-500 hover:text-rose-500 transition-colors"><Trash2 size={14} /></button>}
                   </div>
                   <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
-                    <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center font-black text-lg ${getRoleColor(player.role)}`}>
-                        {player.number || '#'}
-                    </div>
-                    <div className="flex-1">
-                        <input 
-                            type="text" 
-                            value={player.name} 
-                            onChange={(e) => updateRoster(idx, 'name', e.target.value)} 
-                            className="w-full bg-transparent font-bold text-white border-b border-slate-700 focus:border-red-500 focus:outline-none py-1 text-sm md:text-base"
-                            placeholder="Name"
-                        />
-                    </div>
+                    <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center font-black text-lg ${getRoleColor(player.role)}`}>{player.number || '#'}</div>
+                    <div className="flex-1"><input type="text" value={player.name} onChange={(e) => updateRoster(idx, 'name', e.target.value)} className="w-full bg-transparent font-bold text-white border-b border-slate-700 focus:border-red-500 focus:outline-none py-1 text-sm md:text-base" placeholder="Name" /></div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 md:gap-3">
-                    <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Role</label>
-                        <select value={player.role} onChange={(e) => updateRoster(idx, 'role', e.target.value)} className="w-full p-1.5 md:p-2 bg-slate-800 border border-slate-600 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-red-500">
-                            {["S", "OH1", "OH2", "M1", "M2", "OPP", "L", "DS", "SS", "OH", "M"].map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Num/Init</label>
-                        <input 
-                            type="text" 
-                            value={player.number} 
-                            onChange={(e) => updateRoster(idx, 'number', e.target.value)} 
-                            className="w-full p-1.5 md:p-2 bg-slate-800 border border-slate-600 rounded-lg text-xs text-center text-white focus:outline-none focus:ring-2 focus:ring-red-500" 
-                            placeholder="#"
-                        />
-                    </div>
+                    <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Role</label><select value={player.role} onChange={(e) => updateRoster(idx, 'role', e.target.value)} className="w-full p-1.5 md:p-2 bg-slate-800 border border-slate-600 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-red-500">{["S", "OH1", "OH2", "M1", "M2", "OPP", "L", "DS", "SS", "OH", "M"].map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                    <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Num/Init</label><input type="text" value={player.number} onChange={(e) => updateRoster(idx, 'number', e.target.value)} className="w-full p-1.5 md:p-2 bg-slate-800 border border-slate-600 rounded-lg text-xs text-center text-white focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="#" /></div>
                   </div>
                 </div>
               ))}
@@ -1483,27 +1536,9 @@ const App = () => {
       {/* --- MOBILE BOTTOM NAVIGATION --- */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 pb-safe z-50">
           <div className="flex justify-around items-center h-16">
-              <button 
-                  onClick={() => setActiveTab('roster')} 
-                  className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'roster' ? 'text-red-500' : 'text-slate-500'}`}
-              >
-                  <Users size={20} className={activeTab === 'roster' ? 'fill-current' : ''} />
-                  <span className="text-[10px] font-bold mt-1">Roster</span>
-              </button>
-              <button 
-                  onClick={() => setActiveTab('board')} 
-                  className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'board' ? 'text-red-500' : 'text-slate-500'}`}
-              >
-                  <CourtIcon size={20} />
-                  <span className="text-[10px] font-bold mt-1">Court</span>
-              </button>
-              <button 
-                  onClick={() => { setActiveTab('export'); saveCurrentState(); }} 
-                  className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'export' ? 'text-red-500' : 'text-slate-500'}`}
-              >
-                  <ClipboardList size={20} />
-                  <span className="text-[10px] font-bold mt-1">Plan</span>
-              </button>
+              <button onClick={() => setActiveTab('roster')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'roster' ? 'text-red-500' : 'text-slate-500'}`}><Users size={20} className={activeTab === 'roster' ? 'fill-current' : ''} /><span className="text-[10px] font-bold mt-1">Roster</span></button>
+              <button onClick={() => setActiveTab('board')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'board' ? 'text-red-500' : 'text-slate-500'}`}><CourtIcon size={20} /><span className="text-[10px] font-bold mt-1">Court</span></button>
+              <button onClick={() => { setActiveTab('export'); saveCurrentState(); }} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'export' ? 'text-red-500' : 'text-slate-500'}`}><ClipboardList size={20} /><span className="text-[10px] font-bold mt-1">Plan</span></button>
           </div>
       </div>
     </div>
