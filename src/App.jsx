@@ -1,26 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Users, Pencil, Move, Trash2, Save, Undo, ChevronRight, Eraser, Settings, ShieldCheck, ShieldAlert, GripVertical, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, FileText, Download, LayoutGrid, ClipboardList, Edit3, Briefcase, AlertTriangle, Loader2, Menu, Printer, LogIn, LogOut, Cloud, ArrowUpRight, Sword, Shield, Square, Triangle } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInWithCustomToken, signInAnonymously, signOut } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, deleteDoc, query } from 'firebase/firestore';
-
-// --- FIREBASE SETUP ---
-const getFirebaseConfig = () => {
-  try {
-    if (typeof __firebase_config !== 'undefined') {
-      return JSON.parse(__firebase_config);
-    }
-  } catch (e) {
-    console.warn("Firebase config parsing error", e);
-  }
-  return { apiKey: "demo", authDomain: "demo", projectId: "demo" }; 
-};
-
-const firebaseConfig = getFirebaseConfig();
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+import { Users, Pencil, Move, Trash2, Undo, ChevronRight, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, Download, Trophy, Shield, Loader2, Printer, Hexagon, Circle, Square, Minus } from 'lucide-react';
 
 // --- CONSTANTS & CONFIGURATION ---
 const OFFENSE_PHASES = [
@@ -51,58 +30,6 @@ const DEFAULT_ROSTER = [
   { id: 'p11', role: 'S', name: 'Sub Setter', number: '13' },
   { id: 'p12', role: 'M', name: 'Sub Middle', number: '14' },
 ];
-
-// --- CUSTOM ICONS ---
-const ClubLogo = ({ size = 24, className = "" }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={size}
-    height={size}
-    viewBox="0 0 100 100"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="8"
-    strokeLinecap="round"
-    className={className}
-  >
-    <g transform="translate(50,60)">
-      {/* Outer Circle removed as requested */}
-      {[0, 120, 240].map((angle, i) => (
-        <path
-          key={i}
-          d="M 0 0 Q -15 -25 0 -48" 
-          transform={`rotate(${angle})`}
-        />
-      ))}
-    </g>
-  </svg>
-);
-
-const CustomArrowIcon = ({ size = 18, className = "" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <path d="M19 5L5 19" />
-        <path d="M15 5h4v4" />
-    </svg>
-);
-
-const CourtIcon = ({ size = 24, className = "" }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <rect x="5" y="2" width="14" height="20" rx="2" />
-    <line x1="5" y1="2" x2="19" y2="2" strokeWidth="4" />
-    <line x1="5" y1="9" x2="19" y2="9" />
-  </svg>
-);
 
 // --- HELPERS ---
 const generateId = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -151,6 +78,68 @@ const calculateDefaultPositions = (rotNum, currentRoster) => {
     return newPositions;
 };
 
+// Hit Testing Helpers
+const getDistance = (p1, p2) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+
+const isPointInPolygon = (point, vs) => {
+    let x = point.x, y = point.y;
+    let inside = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+        let xi = vs[i].x, yi = vs[i].y;
+        let xj = vs[j].x, yj = vs[j].y;
+        let intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+};
+
+const distToSegment = (p, v, w) => {
+  const l2 = (v.x - w.x) * (v.x - w.x) + (v.y - w.y) * (v.y - w.y);
+  if (l2 === 0) return getDistance(p, v);
+  let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return getDistance(p, { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) });
+};
+
+const getCentroid = (points) => {
+    let x = 0, y = 0;
+    points.forEach(p => { x += p.x; y += p.y; });
+    return { x: x / points.length, y: y / points.length };
+};
+
+// --- CUSTOM ICONS ---
+const ClubLogo = ({ size = 24, className = "" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" className={className}>
+    <g transform="translate(50,60)">
+      {[0, 120, 240].map((angle, i) => (
+        <path key={i} d="M 0 0 Q -15 -25 0 -48" transform={`rotate(${angle})`}/>
+      ))}
+    </g>
+  </svg>
+);
+
+const CustomArrowIcon = ({ size = 18, className = "" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="M19 5L5 19" />
+        <path d="M15 5h4v4" />
+    </svg>
+);
+
+const DiagonalLineIcon = ({ size = 18, className = "" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <line x1="4" y1="20" x2="20" y2="4" />
+    </svg>
+);
+
+const CourtIcon = ({ size = 24, className = "" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    {/* Full Court Rectangle */}
+    <rect x="5" y="2" width="14" height="20" rx="2" />
+    {/* Net Line (Middle) */}
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
 // --- COMPONENTS ---
 
 const RotationSquare = ({ rotation, roster, small = false }) => {
@@ -196,9 +185,11 @@ const Court = ({
   courtRef, 
   readOnly = false, 
   small = false, 
-  onMouseDown, 
+  onMouseDown,
+  onDoubleClick, 
   playerPositions = {},
-  attacker = null
+  attacker = null,
+  hoveredElement = null
 }) => {
   const canvasRef = useRef(null);
 
@@ -214,7 +205,7 @@ const Court = ({
 
   const drawPath = (ctx, pathData, width, height) => {
     const { points, color, type, anchorId, modifiers, widthFactor } = pathData;
-    if (points.length < 1 && type !== 'rect') return;
+    if (points.length < 1) return;
 
     let drawPoints = points;
 
@@ -236,7 +227,7 @@ const Court = ({
         }));
     }
 
-    if (drawPoints.length < 2) return;
+    if (drawPoints.length < 2 && type !== 'rect') return;
 
     ctx.beginPath();
     ctx.strokeStyle = color;
@@ -256,13 +247,12 @@ const Court = ({
         ctx.strokeRect(start.x, start.y, w, h);
     } 
     else if (type === 'triangle') {
+        if (drawPoints.length < 2) return;
         const start = drawPoints[0]; 
         const end = drawPoints[drawPoints.length - 1]; 
         
         const angle = Math.atan2(end.y - start.y, end.x - start.x);
         const dist = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
-        
-        // Use stored widthFactor if available, else default
         const factor = widthFactor || (modifiers?.shift ? 1.2 : 0.6);
         const baseWidth = dist * factor; 
 
@@ -280,9 +270,34 @@ const Court = ({
         ctx.globalAlpha = 0.3;
         ctx.fill();
         ctx.globalAlpha = 1.0;
+        ctx.stroke();
+    }
+    else if (type === 'polygon') {
+        if (drawPoints.length < 2) return;
+
+        ctx.moveTo(drawPoints[0].x, drawPoints[0].y);
+        for(let i=1; i<drawPoints.length; i++) {
+            ctx.lineTo(drawPoints[i].x, drawPoints[i].y);
+        }
+        
+        // Close shape for polygons
+        if (drawPoints.length > 2) {
+            ctx.closePath();
+            ctx.globalAlpha = 0.3;
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+        
+        ctx.stroke();
+    }
+    else if (type === 'line') {
+        if (drawPoints.length < 2) return;
+        ctx.moveTo(drawPoints[0].x, drawPoints[0].y);
+        ctx.lineTo(drawPoints[1].x, drawPoints[1].y);
+        ctx.stroke();
     }
     else {
-        // Line Logic
+        // Arrow/Pencil Logic
         ctx.lineWidth = small ? 2 : 3;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -311,9 +326,6 @@ const Court = ({
           ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
         }
 
-        const pLast = drawPoints[drawPoints.length - 1];
-        const pSecondLast = drawPoints[drawPoints.length - 2];
-
         if (drawPoints.length > 2) {
              ctx.lineTo(drawEnd.x, drawEnd.y);
         } else {
@@ -326,6 +338,72 @@ const Court = ({
             drawArrowHead(ctx, drawPoints[lookBackIndex], pLast, small ? 6 : 12);
         }
     }
+  };
+
+  const drawUIOverlay = (ctx, hoveredElement, width, height) => {
+      if (!hoveredElement) return;
+      const { index, type, vertexIndex } = hoveredElement;
+      const path = paths[index];
+      if (!path) return;
+
+      // Draw vertices
+      let drawPoints = path.points.map(p => ({
+          x: (p.x / 100) * width,
+          y: (p.y / 100) * height
+      }));
+
+      // If anchored, adjust points
+      if (path.anchorId && playerPositions[path.anchorId]) {
+          const anchorPos = playerPositions[path.anchorId];
+          const ax = (anchorPos.x / 100) * width;
+          const ay = (anchorPos.y / 100) * height;
+          drawPoints = path.points.map(p => ({
+              x: ax + (p.x / 100) * width,
+              y: ay + (p.y / 100) * height
+          }));
+      }
+
+      ctx.save();
+      // Draw all vertices as small circles
+      if (path.type === 'polygon' || path.type === 'line' || path.type === 'triangle') {
+          drawPoints.forEach((p, i) => {
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+              ctx.fillStyle = (type === 'vertex' && vertexIndex === i) ? '#3b82f6' : 'white';
+              ctx.strokeStyle = '#1e293b';
+              ctx.lineWidth = 2;
+              ctx.fill();
+              ctx.stroke();
+          });
+      }
+
+      // Draw Delete Button at Centroid
+      let center = {x:0, y:0};
+      if (path.type === 'line' || path.type === 'arrow') {
+          center = {
+              x: (drawPoints[0].x + drawPoints[drawPoints.length-1].x)/2,
+              y: (drawPoints[0].y + drawPoints[drawPoints.length-1].y)/2
+          };
+      } else {
+          center = getCentroid(drawPoints);
+      }
+
+      // Draw Trash Icon Circle
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, 12, 0, Math.PI * 2);
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
+      // Simple X
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(center.x - 4, center.y - 4);
+      ctx.lineTo(center.x + 4, center.y + 4);
+      ctx.moveTo(center.x + 4, center.y - 4);
+      ctx.lineTo(center.x - 4, center.y + 4);
+      ctx.stroke();
+
+      ctx.restore();
   };
 
   useEffect(() => {
@@ -355,19 +433,25 @@ const Court = ({
             if (currentPath && currentPath.points.length > 0) {
                 drawPath(ctx, currentPath, width, height);
             }
+            
+            // Draw UI Overlay for Hover/Selection
+            if (!readOnly && hoveredElement) {
+                drawUIOverlay(ctx, hoveredElement, width, height);
+            }
         }
     };
 
-    handleResize(); // Initial draw
+    handleResize(); 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [paths, currentPath, courtRef, small, playerPositions]);
+  }, [paths, currentPath, courtRef, small, playerPositions, hoveredElement]); // Added hoveredElement dependency
 
   return (
     <div 
       ref={courtRef}
       onMouseDown={onMouseDown}
       onTouchStart={onMouseDown}
+      onDoubleClick={onDoubleClick}
       id={!small ? "court-capture-area" : undefined}
       className={`relative w-full aspect-square bg-[#f0f4f8] ${!small ? 'shadow-sm border-2 border-slate-900 cursor-crosshair' : 'border border-slate-300'} select-none bg-white`}
       style={{ touchAction: 'none' }}
@@ -444,18 +528,18 @@ const GamePlanSheet = ({ teams, currentTeamId, lineups, currentLineupId, roster,
                 </div>
                 {/* BIG TEAM NAME HEADER + MODE */}
                 <h1 className="text-4xl font-black text-slate-900 uppercase mt-4 mb-2">
-                    {teams.find(t=>t.id===currentTeamId)?.name} - <span className="text-red-600">{gameMode}</span>
+                    {teams.find(t=>t.id===currentTeamId)?.name} - <span className={gameMode === 'offense' ? "text-red-600" : "text-blue-600"}>{gameMode}</span>
                 </h1>
                 <h2 className="text-2xl font-bold text-slate-500 uppercase">
                     {lineups.find(l => l.id === currentLineupId)?.name}
                 </h2>
             </div>
-            {/* Full Roster Summary */}
-            <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg max-w-sm w-72">
+            {/* Full Roster Summary - DYNAMIC ROWS */}
+            <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg w-auto min-w-[200px]">
                 <div className="text-xs font-bold text-slate-400 uppercase mb-2 border-b pb-1">Full Roster</div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                <div className="grid gap-x-8 gap-y-1" style={{ gridTemplateRows: 'repeat(3, min-content)', gridAutoFlow: 'column' }}>
                     {roster.map((p, i) => (
-                        <div key={p.id} className="text-xs flex justify-between">
+                        <div key={p.id} className="text-xs flex justify-between gap-3 w-32">
                             <span className="font-bold text-slate-700 w-6">{p.number}</span>
                             <span className="text-slate-500 truncate flex-1">{p.name}</span>
                         </div>
@@ -522,26 +606,6 @@ const GamePlanSheet = ({ teams, currentTeamId, lineups, currentLineupId, roster,
 
 // --- MAIN APP ---
 const App = () => {
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  // --- AUTH SETUP ---
-  useEffect(() => {
-    const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        setUser(currentUser);
-        setAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
   const [activeTab, setActiveTab] = useState('board'); 
   const [gameMode, setGameMode] = useState('offense'); 
   const [currentRotation, setCurrentRotation] = useState(1);
@@ -578,536 +642,14 @@ const App = () => {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 }); 
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState(null); 
+  
+  // New Interaction State
+  const [hoveredElement, setHoveredElement] = useState(null); // { type: 'shape'|'vertex', index: number, vertexIndex?: number }
+  const [draggedVertex, setDraggedVertex] = useState(null); // { pathIndex: number, vertexIndex: number }
+
   const courtRef = useRef(null);
 
-  // --- FIRESTORE SYNC ---
-  useEffect(() => {
-    if (!user) return;
-    
-    // 1. Sync Teams
-    const teamsQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'teams');
-    const unsubTeams = onSnapshot(teamsQuery, (snapshot) => {
-        const loadedTeams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        if (loadedTeams.length === 0) {
-            const defaultTeam = { name: 'My Team', roster: DEFAULT_ROSTER };
-            const newTeamRef = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'teams'));
-            setDoc(newTeamRef, defaultTeam);
-        } else {
-            setTeams(loadedTeams);
-            if (!currentTeamId) setCurrentTeamId(loadedTeams[0].id);
-        }
-    }, (error) => console.error("Teams sync error:", error));
-
-    // 2. Sync Lineups
-    const lineupsQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'lineups');
-    const unsubLineups = onSnapshot(lineupsQuery, (snapshot) => {
-        const loadedLineups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setLineups(loadedLineups);
-        if (loadedLineups.length > 0 && !currentLineupId) {
-             const teamLineups = loadedLineups.filter(l => l.teamId === currentTeamId);
-             if (teamLineups.length > 0) loadLineup(teamLineups[0].id, loadedLineups);
-        }
-    }, (error) => console.error("Lineups sync error:", error));
-
-    return () => {
-        unsubTeams();
-        unsubLineups();
-    };
-  }, [user]);
-
-  useEffect(() => {
-      if (teams.length > 0 && !currentTeamId) {
-          setCurrentTeamId(teams[0].id);
-      }
-      if (currentTeamId && lineups.length > 0) {
-          const teamLineups = lineups.filter(l => l.teamId === currentTeamId);
-          if (teamLineups.length > 0 && (!currentLineupId || !teamLineups.find(l => l.id === currentLineupId))) {
-              loadLineup(teamLineups[0].id, lineups);
-          } else if (teamLineups.length === 0) {
-            const team = teams.find(t => t.id === currentTeamId);
-            if (team) createLineup('Lineup 1', team.roster || DEFAULT_ROSTER, currentTeamId, lineups);
-          }
-      }
-  }, [teams, currentTeamId, lineups]);
-
-  useEffect(() => {
-      if (Object.keys(playerPositions).length === 0 && roster.length > 0) {
-          initRotationDefaults(currentRotation, roster);
-      }
-  }, [roster, currentRotation]);
-
-  const saveCurrentState = () => {
-    if (!currentLineupId || !user) return;
-    
-    const key = getStorageKey(currentRotation, currentPhase, gameMode);
-    const newRotations = {
-      ...savedRotations,
-      [key]: {
-        positions: playerPositions,
-        paths: paths,
-        activePlayers: activePlayerIds
-      }
-    };
-    
-    setSavedRotations(newRotations);
-    const lineupRef = doc(db, 'artifacts', appId, 'users', user.uid, 'lineups', currentLineupId);
-    setDoc(lineupRef, { rotations: newRotations, roster: roster }, { merge: true });
-    return newRotations;
-  };
-
-  useEffect(() => {
-    if (!currentTeamId || teams.length === 0 || !user) return;
-    const timer = setTimeout(() => {
-        const teamRef = doc(db, 'artifacts', appId, 'users', user.uid, 'teams', currentTeamId);
-        setDoc(teamRef, { roster: roster }, { merge: true });
-    }, 1000); 
-    return () => clearTimeout(timer);
-  }, [roster, currentTeamId, teams, user]);
-
-  // --- TEAM MANAGEMENT ---
-  const createTeam = async () => {
-      if (!user) return;
-      const newTeam = {
-          name: newItemName || 'New Team',
-          roster: DEFAULT_ROSTER
-      };
-      await setDoc(doc(collection(db, 'artifacts', appId, 'users', user.uid, 'teams')), newTeam);
-      setNewItemName('');
-      setIsTeamManagerOpen(false);
-  };
-
-  const switchTeam = (teamId) => {
-      saveCurrentState(); 
-      setCurrentTeamId(teamId);
-      setIsTeamManagerOpen(false);
-  };
-
-  const deleteTeam = async (id) => {
-      if (teams.length <= 1) return alert("Cannot delete last team.");
-      if (!user) return;
-      await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', id));
-      if (currentTeamId === id) {
-           const remaining = teams.filter(t => t.id !== id);
-           if (remaining.length > 0) switchTeam(remaining[0].id);
-      }
-  };
-
-  const renameTeam = async (id, newName) => {
-      if (!user) return;
-      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', id), { name: newName }, { merge: true });
-      setEditId(null);
-  };
-
-  // --- LINEUP MANAGEMENT ---
-  const createLineup = async (name, rosterToUse, teamId = currentTeamId, currentLineupsList = lineups) => {
-    if (!user) return;
-    const safeRoster = (rosterToUse && rosterToUse.length > 0) ? rosterToUse : DEFAULT_ROSTER;
-    const newLineup = {
-      teamId: teamId,
-      name: name,
-      roster: safeRoster, 
-      rotations: {} 
-    };
-    const newRef = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'lineups'));
-    await setDoc(newRef, newLineup);
-    setIsLineupManagerOpen(false);
-    setNewItemName('');
-  };
-
-  const loadLineup = (id, sourceLineups = lineups) => {
-    const target = sourceLineups.find(l => l.id === id);
-    if (!target) return;
-
-    setCurrentLineupId(id);
-    const validRoster = (target.roster && target.roster.length > 0) ? target.roster : DEFAULT_ROSTER;
-    setRoster(validRoster);
-    setSavedRotations(target.rotations || {});
-    
-    setCurrentRotation(1);
-    setGameMode('offense');
-    setCurrentPhase('receive1');
-    setHistory([]);
-    setIsLineupManagerOpen(false);
-    setSelectedBenchPlayerId(null);
-    
-    const key = getStorageKey(1, 'receive1', 'offense');
-    const data = target.rotations?.[key];
-    if (data && data.activePlayers && data.activePlayers.length > 0) {
-       setPlayerPositions(data.positions);
-       setPaths(data.paths);
-       setActivePlayerIds(data.activePlayers);
-    } else {
-       initRotationDefaults(1, validRoster);
-    }
-  };
-
-  const deleteLineup = async (id) => {
-      const teamLineups = lineups.filter(l => l.teamId === currentTeamId);
-      if (teamLineups.length <= 1) return alert("Must have at least one lineup.");
-      if (!user) return;
-      await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'lineups', id));
-  };
-
-  const renameLineup = async (id, newName) => {
-      if (!user) return;
-      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'lineups', id), { name: newName }, { merge: true });
-      setEditId(null);
-  };
-
-  const clearAllData = async () => {
-      if (!user) return;
-      if (confirm("Are you sure? This will delete ALL teams and lineups.")) {
-          teams.forEach(t => deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', t.id)));
-          lineups.forEach(l => deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'lineups', l.id)));
-          window.location.reload();
-      }
-  };
-
-  // --- LOGIC ---
-  const initRotationDefaults = (rotNum, currentRoster) => {
-      const positions = calculateDefaultPositions(rotNum, currentRoster);
-      const newActiveIds = Object.keys(positions);
-      
-      setActivePlayerIds(newActiveIds);
-      setPlayerPositions(positions);
-      setPaths([]);
-  };
-
-  const handleViewChange = (newRot, newPhase, newMode = gameMode) => {
-    const updatedRotations = saveCurrentState() || savedRotations;
-    const nextKey = getStorageKey(newRot, newPhase, newMode);
-    
-    if (updatedRotations[nextKey]) {
-      const data = updatedRotations[nextKey];
-      setPlayerPositions(data.positions);
-      setPaths(data.paths);
-      setActivePlayerIds(data.activePlayers);
-    } else {
-      initRotationDefaults(newRot, roster);
-    }
-    
-    setCurrentRotation(newRot);
-    setCurrentPhase(newPhase);
-    setGameMode(newMode);
-    setHistory([]);
-    setSelectedBenchPlayerId(null);
-  };
-
-  const handleExport = (elementId, filename) => {
-    const element = document.getElementById(elementId);
-    if (!element) {
-        alert("Export area not found.");
-        return;
-    }
-    
-    if (!window.html2canvas) {
-        alert("Image generation tool is loading. Please wait a moment and try again.");
-        return;
-    }
-
-    setIsExporting(true);
-    setTimeout(() => {
-        window.html2canvas(element, { 
-            scale: 2, 
-            useCORS: false, 
-            logging: false,
-            backgroundColor: '#ffffff' 
-        }).then(canvas => {
-            const link = document.createElement('a');
-            link.download = `${filename}.png`;
-            link.href = canvas.toDataURL();
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setIsExporting(false);
-        }).catch(err => {
-            console.error(err);
-            alert("Error generating image.");
-            setIsExporting(false);
-        });
-    }, 100);
-  };
-
-  // --- EVENT LISTENERS ---
-  const getCoords = (e) => {
-    if (e.changedTouches && e.changedTouches.length > 0) {
-        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
-    }
-    return { x: e.clientX, y: e.clientY };
-  };
-
-  // --- REVISED OVERLAP RULE LOGIC ---
-  const shouldEnforceRules = (phase) => {
-      // Automatically on for receive 1 and 2, off for everything else
-      return ['receive1', 'receive2'].includes(phase);
-  };
-
-  // Shape Hit Testing Helper
-  const isPointInShape = (point, path, width, height) => {
-      const { points, type } = path;
-      if (points.length < 2) return false;
-      const start = { x: (points[0].x / 100) * width, y: (points[0].y / 100) * height };
-      const end = { x: (points[points.length-1].x / 100) * width, y: (points[points.length-1].y / 100) * height };
-      const p = { x: (point.x / 100) * width, y: (point.y / 100) * height };
-
-      if (type === 'rect') {
-          return p.x >= Math.min(start.x, end.x) && p.x <= Math.max(start.x, end.x) && 
-                 p.y >= Math.min(start.y, end.y) && p.y <= Math.max(start.y, end.y);
-      } else if (type === 'triangle') {
-          // Simple bounding box for now
-          return p.x >= Math.min(start.x, end.x) - 50 && p.x <= Math.max(start.x, end.x) + 50 &&
-                 p.y >= Math.min(start.y, end.y) - 50 && p.y <= Math.max(start.y, end.y) + 50;
-      }
-      return false;
-  };
-
-  useEffect(() => {
-    const handleWindowMove = (e) => {
-        const { x, y } = getCoords(e);
-        setMousePos({ x, y });
-        const rect = courtRef.current?.getBoundingClientRect();
-        
-        if ((isDrawing || draggedPlayer || selectedShapeIndex !== null) && e.cancelable) {
-            e.preventDefault();
-        }
-
-        if (!rect) return;
-
-        // Shape Resizing Logic
-        if (mode === 'move' && selectedShapeIndex !== null && !draggedPlayer) {
-             const cx = ((x - rect.left) / rect.width) * 100;
-             const cy = ((y - rect.top) / rect.height) * 100;
-             
-             setPaths(prev => {
-                 const newPaths = [...prev];
-                 const path = newPaths[selectedShapeIndex];
-                 
-                 if (path.type === 'rect') {
-                     // Update end point
-                     path.points[path.points.length - 1] = { x: cx, y: cy };
-                 } else if (path.type === 'triangle') {
-                     // Update width factor based on horizontal drag
-                     const start = path.points[0];
-                     const end = path.points[path.points.length - 1];
-                     // Rudimentary width adjustment logic based on mouse X relative to vector
-                     // Simply scaling widthFactor based on mouse X position for now
-                     const baseDist = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
-                     if (baseDist > 0) {
-                         const currentWidthFactor = path.widthFactor || 0.6;
-                         // Adjust sensitive
-                         path.widthFactor = Math.max(0.1, Math.min(3.0, currentWidthFactor + (e.movementX || 0) * 0.01));
-                     }
-                 }
-                 return newPaths;
-             });
-             return;
-        }
-
-        if (mode === 'move' && draggedPlayer && !draggedPlayer.isBench) {
-             let newX = ((x - rect.left) / rect.width) * 100;
-             let newY = ((y - rect.top) / rect.height) * 100;
-             
-             if (shouldEnforceRules(currentPhase)) { 
-                const constraints = getConstraints(draggedPlayer.id);
-                newX = Math.max(constraints.minX, Math.min(constraints.maxX, newX));
-                newY = Math.max(constraints.minY, Math.min(constraints.maxY, newY));
-             }
-             setPlayerPositions(prev => ({ ...prev, [draggedPlayer.id]: { x: newX, y: newY } }));
-        } else if ((mode === 'draw' || mode === 'arrow' || mode === 'rect' || mode === 'triangle') && isDrawing) {
-             const cx = ((x - rect.left) / rect.width) * 100;
-             const cy = ((y - rect.top) / rect.height) * 100;
-             
-             let pointToAdd = { x: cx, y: cy };
-             if (currentPath && currentPath.anchorId) {
-                 const anchorPos = playerPositions[currentPath.anchorId];
-                 if (anchorPos) {
-                     pointToAdd = { x: cx - anchorPos.x, y: cy - anchorPos.y };
-                 }
-             }
-
-             if (cx > -20 && cx < 120 && cy > -20 && cy < 120) {
-                setCurrentPath(prev => ({ ...prev, points: [...prev.points, pointToAdd] }));
-             }
-        }
-    };
-
-    const handleWindowUp = (e) => {
-       if (selectedShapeIndex !== null) {
-           setSelectedShapeIndex(null);
-           saveCurrentState();
-       }
-
-       if (mode === 'move' && draggedPlayer) {
-           if (draggedPlayer.isBench) {
-               const rect = courtRef.current?.getBoundingClientRect();
-               if (rect) {
-                   const { x, y } = getCoords(e);
-                   const dropX = ((x - rect.left) / rect.width) * 100;
-                   const dropY = ((y - rect.top) / rect.height) * 100;
-                   let nearestId = null;
-                   let minDist = 15;
-                   Object.entries(playerPositions).forEach(([pid, pos]) => {
-                       const dist = Math.sqrt(Math.pow(pos.x - dropX, 2) + Math.pow(pos.y - dropY, 2));
-                       if (dist < minDist) { minDist = dist; nearestId = pid; }
-                   });
-                   
-                   if (nearestId) {
-                       const benchId = draggedPlayer.id;
-                       const newActive = activePlayerIds.map(id => id === nearestId ? benchId : id);
-                       setActivePlayerIds(newActive);
-                       setPlayerPositions(prev => {
-                           const next = {...prev};
-                           if (next[nearestId]) {
-                               next[benchId] = { ...next[nearestId] }; 
-                               delete next[nearestId];
-                           }
-                           return next;
-                       });
-                       setSelectedBenchPlayerId(null);
-                   }
-               }
-           }
-           setDraggedPlayer(null);
-           saveCurrentState();
-       } else if (isDrawing) {
-           setIsDrawing(false);
-           if (currentPath && currentPath.points.length > 1) {
-               setPaths(prev => [...prev, currentPath]);
-               saveCurrentState();
-           }
-           setCurrentPath(null);
-       }
-    };
-
-    window.addEventListener('mousemove', handleWindowMove);
-    window.addEventListener('mouseup', handleWindowUp);
-    window.addEventListener('mouseleave', handleWindowUp);
-    window.addEventListener('touchmove', handleWindowMove, { passive: false });
-    window.addEventListener('touchend', handleWindowUp);
-    
-    return () => {
-        window.removeEventListener('mousemove', handleWindowMove);
-        window.removeEventListener('mouseup', handleWindowUp);
-        window.removeEventListener('mouseleave', handleWindowUp);
-        window.removeEventListener('touchmove', handleWindowMove);
-        window.removeEventListener('touchend', handleWindowUp);
-    };
-  }, [mode, draggedPlayer, isDrawing, currentPath, playerPositions, activePlayerIds, savedRotations, selectedShapeIndex]); 
-
-  const handleTokenDown = (e, playerId, isBench) => {
-      const isShift = e.shiftKey;
-
-      if (mode === 'move') {
-          if (isBench) {
-              if (selectedBenchPlayerId === playerId) {
-                  setSelectedBenchPlayerId(null);
-              } else {
-                  setSelectedBenchPlayerId(playerId);
-              }
-              saveToHistory();
-              setDraggedPlayer({ id: playerId, isBench });
-          } 
-          else {
-              if (selectedBenchPlayerId) {
-                  // Swap Logic
-                  const benchId = selectedBenchPlayerId;
-                  const courtId = playerId;
-                  // Don't swap if same
-                  if (benchId === courtId) { setSelectedBenchPlayerId(null); return; }
-
-                  const newActive = activePlayerIds.map(id => id === courtId ? benchId : id);
-                  setActivePlayerIds(newActive);
-                  setPlayerPositions(prev => {
-                      const next = {...prev};
-                      next[benchId] = next[courtId]; 
-                      delete next[courtId]; 
-                      return next;
-                  });
-                  setSelectedBenchPlayerId(null); 
-                  saveCurrentState();
-              } else {
-                  saveToHistory();
-                  setDraggedPlayer({ id: playerId, isBench });
-              }
-          }
-      } 
-      else if (mode === 'arrow' && !isBench) {
-          saveToHistory();
-          setIsDrawing(true);
-          setCurrentPath({ 
-              points: [{x: 0, y: 0}], 
-              color: drawColor, 
-              type: 'arrow', 
-              anchorId: playerId 
-          });
-      }
-  };
-
-  const handleCourtDown = (e) => {
-      if (mode === 'move') {
-          // Check for Shape Selection for Resizing
-          const { x, y } = getCoords(e);
-          const rect = courtRef.current.getBoundingClientRect();
-          const cx = ((x - rect.left) / rect.width) * 100;
-          const cy = ((y - rect.top) / rect.height) * 100;
-          
-          // Reverse check to select top-most
-          for (let i = paths.length - 1; i >= 0; i--) {
-              const path = paths[i];
-              if (path.type === 'rect' || path.type === 'triangle') {
-                  if (isPointInShape({x: cx, y: cy}, path, rect.width, rect.height)) {
-                      setSelectedShapeIndex(i);
-                      return;
-                  }
-              }
-          }
-          setSelectedBenchPlayerId(null);
-      }
-      else if (['draw', 'arrow', 'rect', 'triangle'].includes(mode)) {
-          saveToHistory();
-          setIsDrawing(true);
-          const { x, y } = getCoords(e);
-          const rect = courtRef.current.getBoundingClientRect();
-          const cx = ((x - rect.left) / rect.width) * 100;
-          const cy = ((y - rect.top) / rect.height) * 100;
-          
-          setCurrentPath({ 
-              points: [{x: cx, y: cy}], 
-              color: drawColor, 
-              type: mode, 
-              anchorId: null,
-              modifiers: { shift: e.shiftKey }
-          });
-      } 
-  };
-
-  // --- HISTORY ---
-  const saveToHistory = () => {
-    setHistory(prev => [...prev, {
-      playerPositions: JSON.parse(JSON.stringify(playerPositions)),
-      paths: JSON.parse(JSON.stringify(paths)),
-      activePlayers: [...activePlayerIds]
-    }]);
-    if (history.length > 20) setHistory(prev => prev.slice(1));
-  };
-
-  const undo = () => {
-    if (history.length === 0) return;
-    const previousState = history[history.length - 1];
-    setPlayerPositions(previousState.playerPositions);
-    setPaths(previousState.paths);
-    setActivePlayerIds(previousState.activePlayers);
-    setHistory(prev => prev.slice(0, -1));
-  };
-  
-  const updateRoster = (index, field, value) => {
-    if (field === 'number' && value.length > 4) return; 
-    const newRoster = [...roster];
-    newRoster[index] = { ...newRoster[index], [field]: value };
-    setRoster(newRoster);
-  };
-
-  // --- CONSTRAINTS ---
+  // --- CONSTRAINT HELPERS ---
   const getPlayerIdInZone = (targetZone) => {
     for(let i=0; i<6; i++) {
           const zone = getPlayerZone(i, currentRotation);
@@ -1151,8 +693,608 @@ const App = () => {
     return limits;
   };
 
-  if (authLoading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white"><Loader2 className="animate-spin" /></div>;
-  if (!user) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">Login Required</div>;
+  // --- INTERACTION LOGIC ---
+  const getCoords = (e) => {
+    if (e.changedTouches && e.changedTouches.length > 0) {
+        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    }
+    return { x: e.clientX, y: e.clientY };
+  };
+
+  const shouldEnforceRules = (phase) => ['receive1', 'receive2'].includes(phase);
+
+  // New Hit Test Logic
+  const performHitTest = (cx, cy, width, height) => {
+      // 1. Check Delete Buttons
+      if (hoveredElement && hoveredElement.type === 'shape') {
+          const path = paths[hoveredElement.index];
+          if (!path) return null;
+          let center = {x:0,y:0};
+          let drawPoints = path.points.map(p => ({ x: (p.x / 100) * width, y: (p.y / 100) * height }));
+          if (path.type === 'line' || path.type === 'arrow') {
+              center = { x: (drawPoints[0].x + drawPoints[drawPoints.length-1].x)/2, y: (drawPoints[0].y + drawPoints[drawPoints.length-1].y)/2 };
+          } else {
+              center = getCentroid(drawPoints);
+          }
+          const distToDel = Math.sqrt(Math.pow((cx/100*width) - center.x, 2) + Math.pow((cy/100*height) - center.y, 2));
+          if (distToDel < 15) return { type: 'delete', index: hoveredElement.index };
+      }
+
+      // 2. Check Vertices
+      for (let i = 0; i < paths.length; i++) {
+          const path = paths[i];
+          if (path.type === 'polygon' || path.type === 'line' || path.type === 'triangle') {
+              for (let j = 0; j < path.points.length; j++) {
+                  const p = path.points[j];
+                  const absX = (p.x / 100) * width;
+                  const absY = (p.y / 100) * height;
+                  const dist = Math.sqrt(Math.pow((cx/100*width) - absX, 2) + Math.pow((cy/100*height) - absY, 2));
+                  if (dist < 10) return { type: 'vertex', index: i, vertexIndex: j };
+              }
+          }
+      }
+
+      // 3. Check Bodies
+      for (let i = paths.length - 1; i >= 0; i--) {
+          const path = paths[i];
+          let hit = false;
+          const absPoints = path.points.map(p => ({ x: (p.x/100)*width, y: (p.y/100)*height }));
+          const pt = { x: (cx/100)*width, y: (cy/100)*height };
+
+          if (path.type === 'polygon' || path.type === 'triangle') {
+              if (isPointInPolygon(pt, absPoints)) hit = true;
+          } else if (path.type === 'line' || path.type === 'arrow') {
+              // Line detection
+              for(let k=0; k<absPoints.length-1; k++){
+                  if(distToSegment(pt, absPoints[k], absPoints[k+1]) < 10) hit = true;
+              }
+          } else if (path.type === 'rect') {
+              // Simple Rect detection
+              const minX = Math.min(absPoints[0].x, absPoints[1].x);
+              const maxX = Math.max(absPoints[0].x, absPoints[1].x);
+              const minY = Math.min(absPoints[0].y, absPoints[1].y);
+              const maxY = Math.max(absPoints[0].y, absPoints[1].y);
+              if (pt.x >= minX && pt.x <= maxX && pt.y >= minY && pt.y <= maxY) hit = true;
+          }
+
+          if (hit) return { type: 'shape', index: i };
+      }
+      return null;
+  };
+
+  // --- ENSURE DOWNLOAD DEPENDENCY ---
+  useEffect(() => {
+    if (!window.html2canvas) {
+      const script = document.createElement('script');
+      script.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  // --- LOCAL STORAGE SYNC ---
+  useEffect(() => {
+    const loadedTeams = JSON.parse(localStorage.getItem('avb_teams') || '[]');
+    const loadedLineups = JSON.parse(localStorage.getItem('avb_lineups') || '[]');
+
+    if (loadedTeams.length === 0) {
+        const defaultTeam = { id: generateId('team'), name: 'My Team', roster: DEFAULT_ROSTER };
+        setTeams([defaultTeam]);
+        setCurrentTeamId(defaultTeam.id);
+        localStorage.setItem('avb_teams', JSON.stringify([defaultTeam]));
+    } else {
+        setTeams(loadedTeams);
+        setCurrentTeamId(loadedTeams[0].id);
+    }
+    setLineups(loadedLineups);
+  }, []);
+
+  useEffect(() => {
+    if (currentTeamId && lineups.length > 0) {
+        const teamLineups = lineups.filter(l => l.teamId === currentTeamId);
+        if (teamLineups.length > 0 && (!currentLineupId || !teamLineups.find(l => l.id === currentLineupId))) {
+            loadLineup(teamLineups[0].id, lineups);
+        } else if (teamLineups.length === 0) {
+          createLineup('Lineup 1', teams.find(t=>t.id===currentTeamId)?.roster || DEFAULT_ROSTER, currentTeamId, lineups);
+        }
+    } else if (currentTeamId && lineups.length === 0) {
+         createLineup('Lineup 1', teams.find(t=>t.id===currentTeamId)?.roster || DEFAULT_ROSTER, currentTeamId, []);
+    }
+  }, [currentTeamId, lineups]); 
+
+  useEffect(() => {
+      if (Object.keys(playerPositions).length === 0 && roster.length > 0) {
+          initRotationDefaults(currentRotation, roster);
+      }
+  }, [roster, currentRotation]);
+
+  const saveTeamsToStorage = (newTeams) => {
+      setTeams(newTeams);
+      localStorage.setItem('avb_teams', JSON.stringify(newTeams));
+  };
+
+  const saveLineupsToStorage = (newLineups) => {
+      setLineups(newLineups);
+      localStorage.setItem('avb_lineups', JSON.stringify(newLineups));
+  };
+
+  const saveCurrentState = () => {
+    if (!currentLineupId) return;
+    const key = getStorageKey(currentRotation, currentPhase, gameMode);
+    const newRotations = {
+      ...savedRotations,
+      [key]: {
+        positions: playerPositions,
+        paths: paths,
+        activePlayers: activePlayerIds
+      }
+    };
+    setSavedRotations(newRotations);
+    const updatedLineups = lineups.map(l => {
+        if (l.id === currentLineupId) {
+            return { ...l, rotations: newRotations, roster: roster };
+        }
+        return l;
+    });
+    saveLineupsToStorage(updatedLineups);
+    return newRotations;
+  };
+
+  useEffect(() => {
+    if (!currentLineupId) return;
+    const timer = setTimeout(() => {
+        saveCurrentState();
+    }, 500); 
+    return () => clearTimeout(timer);
+  }, [playerPositions, paths, activePlayerIds]);
+
+  useEffect(() => {
+    if (!currentTeamId || teams.length === 0) return;
+    const timer = setTimeout(() => {
+        const updatedTeams = teams.map(t => {
+            if (t.id === currentTeamId) {
+                return { ...t, roster: roster };
+            }
+            return t;
+        });
+        saveTeamsToStorage(updatedTeams);
+    }, 1000); 
+    return () => clearTimeout(timer);
+  }, [roster, currentTeamId]);
+
+  // --- APP ACTIONS ---
+  const createTeam = () => {
+      const newTeam = { id: generateId('team'), name: newItemName || 'New Team', roster: DEFAULT_ROSTER };
+      saveTeamsToStorage([...teams, newTeam]);
+      setNewItemName('');
+      setIsTeamManagerOpen(false);
+      switchTeam(newTeam.id);
+  };
+
+  const switchTeam = (teamId) => {
+      saveCurrentState(); 
+      setCurrentTeamId(teamId);
+      const team = teams.find(t => t.id === teamId);
+      if (team) setRoster(team.roster);
+      setIsTeamManagerOpen(false);
+  };
+
+  const deleteTeam = (id) => {
+      if (teams.length <= 1) return alert("Cannot delete last team.");
+      const newTeams = teams.filter(t => t.id !== id);
+      saveTeamsToStorage(newTeams);
+      if (currentTeamId === id) switchTeam(newTeams[0].id);
+  };
+
+  const renameTeam = (id, newName) => {
+      const newTeams = teams.map(t => t.id === id ? { ...t, name: newName } : t);
+      saveTeamsToStorage(newTeams);
+      setEditId(null);
+  };
+
+  const createLineup = (name, rosterToUse, teamId = currentTeamId, currentLineupsList = lineups) => {
+    const safeRoster = (rosterToUse && rosterToUse.length > 0) ? rosterToUse : DEFAULT_ROSTER;
+    const newLineup = { id: generateId('lineup'), teamId: teamId, name: name, roster: safeRoster, rotations: {} };
+    const newLineups = [...currentLineupsList, newLineup];
+    saveLineupsToStorage(newLineups);
+    if (newLineups.filter(l => l.teamId === teamId).length === 1 || teamId === currentTeamId) {
+        loadLineup(newLineup.id, newLineups);
+    }
+    setIsLineupManagerOpen(false);
+    setNewItemName('');
+  };
+
+  const loadLineup = (id, sourceLineups = lineups) => {
+    const target = sourceLineups.find(l => l.id === id);
+    if (!target) return;
+    setCurrentLineupId(id);
+    const validRoster = (target.roster && target.roster.length > 0) ? target.roster : DEFAULT_ROSTER;
+    setRoster(validRoster);
+    setSavedRotations(target.rotations || {});
+    setCurrentRotation(1);
+    setGameMode('offense');
+    setCurrentPhase('receive1');
+    setHistory([]);
+    setIsLineupManagerOpen(false);
+    setSelectedBenchPlayerId(null);
+    const key = getStorageKey(1, 'receive1', 'offense');
+    const data = target.rotations?.[key];
+    if (data && data.activePlayers && data.activePlayers.length > 0) {
+       setPlayerPositions(data.positions);
+       setPaths(data.paths);
+       setActivePlayerIds(data.activePlayers);
+    } else {
+       initRotationDefaults(1, validRoster);
+    }
+  };
+
+  const deleteLineup = (id) => {
+      const teamLineups = lineups.filter(l => l.teamId === currentTeamId);
+      if (teamLineups.length <= 1) return alert("Must have at least one lineup.");
+      const newLineups = lineups.filter(l => l.id !== id);
+      saveLineupsToStorage(newLineups);
+      if (currentLineupId === id) {
+          const remaining = newLineups.filter(l => l.teamId === currentTeamId);
+          if (remaining.length > 0) loadLineup(remaining[0].id, newLineups);
+      }
+  };
+
+  const renameLineup = (id, newName) => {
+      const newLineups = lineups.map(l => l.id === id ? { ...l, name: newName } : l);
+      saveLineupsToStorage(newLineups);
+      setEditId(null);
+  };
+
+  const initRotationDefaults = (rotNum, currentRoster) => {
+      const positions = calculateDefaultPositions(rotNum, currentRoster);
+      const newActiveIds = Object.keys(positions);
+      setActivePlayerIds(newActiveIds);
+      setPlayerPositions(positions);
+      setPaths([]);
+  };
+
+  const handleViewChange = (newRot, newPhase, newMode = gameMode) => {
+    const updatedRotations = saveCurrentState() || savedRotations;
+    const nextKey = getStorageKey(newRot, newPhase, newMode);
+    if (updatedRotations[nextKey]) {
+      const data = updatedRotations[nextKey];
+      setPlayerPositions(data.positions);
+      setPaths(data.paths);
+      setActivePlayerIds(data.activePlayers);
+    } else {
+      initRotationDefaults(newRot, roster);
+    }
+    setCurrentRotation(newRot);
+    setCurrentPhase(newPhase);
+    setGameMode(newMode);
+    setHistory([]);
+    setSelectedBenchPlayerId(null);
+  };
+
+  const handleExport = (elementId, filename) => {
+    const element = document.getElementById(elementId);
+    if (!element || !window.html2canvas) return;
+    setIsExporting(true);
+    setTimeout(() => {
+        window.html2canvas(element, { scale: 2, useCORS: false, logging: false, backgroundColor: '#ffffff' }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = `${filename}.png`;
+            link.href = canvas.toDataURL();
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setIsExporting(false);
+        }).catch(err => {
+            console.error(err);
+            setIsExporting(false);
+        });
+    }, 100);
+  };
+
+  useEffect(() => {
+    const handleWindowMove = (e) => {
+        const { x, y } = getCoords(e);
+        setMousePos({ x, y });
+        const rect = courtRef.current?.getBoundingClientRect();
+        
+        if (!rect) return;
+        const cx = ((x - rect.left) / rect.width) * 100;
+        const cy = ((y - rect.top) / rect.height) * 100;
+
+        // Hover Detection (Desktop only essentially, but runs always)
+        if (mode === 'move' && !draggedPlayer && !draggedVertex && !isDrawing) {
+            const hit = performHitTest(cx, cy, rect.width, rect.height);
+            // On mobile, we rely on tap to select, so don't clear selection on mere move if it's touch
+            // But here we simply update hover state.
+            // If dragging vertex, we shouldn't change hover state.
+            if (!draggedVertex) setHoveredElement(hit);
+        }
+
+        if (mode === 'move' && draggedVertex) {
+             e.preventDefault();
+             setPaths(prev => {
+                 const newPaths = [...prev];
+                 const path = { ...newPaths[draggedVertex.pathIndex] };
+                 const newPoints = [...path.points];
+                 newPoints[draggedVertex.vertexIndex] = { x: cx, y: cy };
+                 path.points = newPoints;
+                 newPaths[draggedVertex.pathIndex] = path;
+                 return newPaths;
+             });
+        }
+
+        if (mode === 'move' && draggedPlayer && !draggedPlayer.isBench) {
+             let newX = cx;
+             let newY = cy;
+             if (shouldEnforceRules(currentPhase)) { 
+                const constraints = getConstraints(draggedPlayer.id);
+                newX = Math.max(constraints.minX, Math.min(constraints.maxX, newX));
+                newY = Math.max(constraints.minY, Math.min(constraints.maxY, newY));
+             }
+             setPlayerPositions(prev => ({ ...prev, [draggedPlayer.id]: { x: newX, y: newY } }));
+        } 
+        else if (isDrawing && currentPath) {
+             // Drawing Logic
+             let pointToAdd = { x: cx, y: cy };
+             if (currentPath.anchorId) {
+                 const anchorPos = playerPositions[currentPath.anchorId];
+                 if (anchorPos) pointToAdd = { x: cx - anchorPos.x, y: cy - anchorPos.y };
+             }
+
+             if (mode === 'line') {
+                 // Line Drag
+                 setCurrentPath(prev => ({ ...prev, points: [prev.points[0], pointToAdd] }));
+             } else if (mode === 'polygon' || mode === 'triangle') {
+                 // Poly Drag
+                 setCurrentPath(prev => {
+                     const newPoints = [...prev.points];
+                     newPoints[newPoints.length - 1] = pointToAdd;
+                     return { ...prev, points: newPoints };
+                 });
+             } else {
+                 // Freehand
+                 if (cx > -20 && cx < 120 && cy > -20 && cy < 120) {
+                    setCurrentPath(prev => ({ ...prev, points: [...prev.points, pointToAdd] }));
+                 }
+             }
+        }
+    };
+
+    const handleWindowUp = (e) => {
+       if (draggedVertex) {
+           setDraggedVertex(null);
+           saveCurrentState();
+       }
+
+       if (mode === 'move' && draggedPlayer) {
+           if (draggedPlayer.isBench) {
+               const rect = courtRef.current?.getBoundingClientRect();
+               if (rect) {
+                   const { x, y } = getCoords(e);
+                   const dropX = ((x - rect.left) / rect.width) * 100;
+                   const dropY = ((y - rect.top) / rect.height) * 100;
+                   let nearestId = null;
+                   let minDist = 15;
+                   Object.entries(playerPositions).forEach(([pid, pos]) => {
+                       const dist = Math.sqrt(Math.pow(pos.x - dropX, 2) + Math.pow(pos.y - dropY, 2));
+                       if (dist < minDist) { minDist = dist; nearestId = pid; }
+                   });
+                   
+                   if (nearestId) {
+                       const benchId = draggedPlayer.id;
+                       const newActive = activePlayerIds.map(id => id === nearestId ? benchId : id);
+                       setActivePlayerIds(newActive);
+                       setPlayerPositions(prev => {
+                           const next = {...prev};
+                           if (next[nearestId]) {
+                               next[benchId] = { ...next[nearestId] }; 
+                               delete next[nearestId];
+                           }
+                           return next;
+                       });
+                       setSelectedBenchPlayerId(null);
+                   }
+               }
+           }
+           setDraggedPlayer(null);
+           saveCurrentState();
+       } else if (isDrawing && (mode === 'line' || mode === 'arrow' || mode === 'rect' || mode === 'draw')) {
+           // Finish drag-based tools
+           setIsDrawing(false);
+           if (currentPath && currentPath.points.length > 1) {
+               setPaths(prev => [...prev, currentPath]);
+               saveCurrentState();
+           }
+           setCurrentPath(null);
+       }
+    };
+
+    window.addEventListener('mousemove', handleWindowMove);
+    window.addEventListener('mouseup', handleWindowUp);
+    window.addEventListener('mouseleave', handleWindowUp);
+    window.addEventListener('touchmove', handleWindowMove, { passive: false });
+    window.addEventListener('touchend', handleWindowUp);
+    
+    return () => {
+        window.removeEventListener('mousemove', handleWindowMove);
+        window.removeEventListener('mouseup', handleWindowUp);
+        window.removeEventListener('mouseleave', handleWindowUp);
+        window.removeEventListener('touchmove', handleWindowMove);
+        window.removeEventListener('touchend', handleWindowUp);
+    };
+  }, [mode, draggedPlayer, isDrawing, currentPath, playerPositions, activePlayerIds, savedRotations, draggedVertex, hoveredElement]); 
+
+  const handleTokenDown = (e, playerId, isBench) => {
+      e.stopPropagation();
+      if (mode === 'move') {
+          if (isBench) {
+              if (selectedBenchPlayerId === playerId) setSelectedBenchPlayerId(null);
+              else setSelectedBenchPlayerId(playerId);
+              saveToHistory();
+              setDraggedPlayer({ id: playerId, isBench });
+          } 
+          else {
+              if (selectedBenchPlayerId) {
+                  // Swap
+                  const benchId = selectedBenchPlayerId;
+                  const courtId = playerId;
+                  if (benchId === courtId) { setSelectedBenchPlayerId(null); return; }
+                  const newActive = activePlayerIds.map(id => id === courtId ? benchId : id);
+                  setActivePlayerIds(newActive);
+                  setPlayerPositions(prev => {
+                      const next = {...prev};
+                      next[benchId] = next[courtId]; 
+                      delete next[courtId]; 
+                      return next;
+                  });
+                  setSelectedBenchPlayerId(null); 
+                  saveCurrentState();
+              } else {
+                  saveToHistory();
+                  setDraggedPlayer({ id: playerId, isBench });
+              }
+          }
+      } 
+      else if (mode === 'arrow' && !isBench) {
+          saveToHistory();
+          setIsDrawing(true);
+          setCurrentPath({ points: [{x: 0, y: 0}], color: drawColor, type: 'arrow', anchorId: playerId });
+      }
+  };
+
+  const handleCourtDown = (e) => {
+      const { x, y } = getCoords(e);
+      const rect = courtRef.current.getBoundingClientRect();
+      const cx = ((x - rect.left) / rect.width) * 100;
+      const cy = ((y - rect.top) / rect.height) * 100;
+
+      if (mode === 'move') {
+          // Check if hitting a UI element (Vertex or Delete)
+          // Mobile: We need to force a hit test on touch start
+          let hit = hoveredElement;
+          if (!hit && e.type === 'touchstart') {
+              hit = performHitTest(cx, cy, rect.width, rect.height);
+              setHoveredElement(hit); // Select it
+          }
+
+          if (hit) {
+              if (hit.type === 'delete') {
+                  setPaths(prev => prev.filter((_, i) => i !== hit.index));
+                  setHoveredElement(null);
+                  saveCurrentState();
+                  return;
+              }
+              if (hit.type === 'vertex') {
+                  setDraggedVertex({ pathIndex: hit.index, vertexIndex: hit.vertexIndex });
+                  saveToHistory();
+                  return;
+              }
+              // If hitting shape body, maybe just select it (mobile) or do nothing (desktop drag shape not implemented yet)
+              if (hit.type === 'shape' && e.type === 'touchstart') {
+                  setHoveredElement(hit); // Ensure selection on tap
+                  return;
+              }
+          }
+          
+          // Deselect if clicking empty space
+          if (!hit && e.type === 'touchstart') {
+              setHoveredElement(null);
+          }
+          
+          setSelectedBenchPlayerId(null);
+      }
+      else if (['draw', 'arrow', 'rect'].includes(mode)) {
+          saveToHistory();
+          setIsDrawing(true);
+          setCurrentPath({ 
+              points: [{x: cx, y: cy}], 
+              color: drawColor, 
+              type: mode, 
+              anchorId: null,
+              modifiers: { shift: e.shiftKey }
+          });
+      } else if (mode === 'line') {
+          // Line Tool Start
+          saveToHistory();
+          setIsDrawing(true);
+          setCurrentPath({
+              points: [{x: cx, y: cy}, {x: cx, y: cy}],
+              color: drawColor,
+              type: 'line'
+          });
+      } else if (mode === 'polygon') {
+          // Polygon Click Logic
+          e.stopPropagation(); 
+          const newPoint = { x: cx, y: cy };
+          if (!isDrawing) {
+              saveToHistory();
+              setIsDrawing(true);
+              setCurrentPath({
+                  points: [newPoint, newPoint], 
+                  color: drawColor, 
+                  type: 'polygon', 
+                  anchorId: null
+              });
+          } else {
+              setCurrentPath(prev => {
+                  const newPoints = [...prev.points];
+                  newPoints[newPoints.length - 1] = newPoint;
+                  return { ...prev, points: [...newPoints, newPoint] };
+              });
+          }
+      }
+  };
+
+  const handleDoubleClick = (e) => {
+      if (mode === 'polygon' && isDrawing) {
+          e.preventDefault(); e.stopPropagation();
+          if (!currentPath) return;
+          let finalPoints = [...currentPath.points];
+          finalPoints.pop(); // Remove floating point
+          
+          // Dedupe
+          const uniquePoints = [];
+          if(finalPoints.length > 0) uniquePoints.push(finalPoints[0]);
+          for(let i=1; i<finalPoints.length; i++){
+              const p = finalPoints[i];
+              const prev = uniquePoints[uniquePoints.length-1];
+              if(Math.sqrt(Math.pow(p.x-prev.x, 2) + Math.pow(p.y-prev.y, 2)) > 0.5) uniquePoints.push(p);
+          }
+          
+          if (uniquePoints.length >= 3) {
+               setPaths(prev => [...prev, { ...currentPath, points: uniquePoints }]);
+               saveCurrentState();
+          }
+          setCurrentPath(null);
+          setIsDrawing(false);
+      }
+  };
+
+  // --- HISTORY ---
+  const saveToHistory = () => {
+    setHistory(prev => [...prev, {
+      playerPositions: JSON.parse(JSON.stringify(playerPositions)),
+      paths: JSON.parse(JSON.stringify(paths)),
+      activePlayers: [...activePlayerIds]
+    }]);
+    if (history.length > 20) setHistory(prev => prev.slice(1));
+  };
+
+  const undo = () => {
+    if (history.length === 0) return;
+    const previousState = history[history.length - 1];
+    setPlayerPositions(previousState.playerPositions);
+    setPaths(previousState.paths);
+    setActivePlayerIds(previousState.activePlayers);
+    setHistory(prev => prev.slice(0, -1));
+  };
+  
+  const updateRoster = (index, field, value) => {
+    if (field === 'number' && value.length > 4) return; 
+    const newRoster = [...roster];
+    newRoster[index] = { ...newRoster[index], [field]: value };
+    setRoster(newRoster);
+  };
 
   const currentPhasesList = gameMode === 'offense' ? OFFENSE_PHASES : DEFENSE_PHASES;
   const currentAttacker = currentPhasesList.find(p => p.id === currentPhase)?.attacker;
@@ -1181,10 +1323,10 @@ const App = () => {
             <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
                 <button onClick={() => setActiveTab('roster')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'roster' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}><Users size={16} /> Roster</button>
                 <button onClick={() => setActiveTab('board')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'board' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}><CourtIcon size={16} /> Court</button>
-                <button onClick={() => { setActiveTab('export'); saveCurrentState(); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'export' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}><ClipboardList size={16} /> Game Plan</button>
+                <button onClick={() => { setActiveTab('export'); saveCurrentState(); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'export' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}><Trophy size={16} /> Game Plan</button>
             </div>
             <div className="flex items-center gap-2">
-                 <button onClick={() => setIsTeamManagerOpen(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors"><Briefcase size={16} /> Teams</button>
+                 <button onClick={() => setIsTeamManagerOpen(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors"><Shield size={16} /> Teams</button>
                  <button onClick={() => setIsLineupManagerOpen(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors"><FolderOpen size={16} /> Lineups</button>
             </div>
         </div>
@@ -1201,13 +1343,13 @@ const App = () => {
                 </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setIsTeamManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700"><Briefcase size={16} /></button>
+              <button onClick={() => setIsTeamManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700"><Shield size={16} /></button>
               <button onClick={() => setIsLineupManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700"><FolderOpen size={16} /></button>
             </div>
         </header>
       )}
 
-      {/* MODALS REMOVED FOR BREVITY (Assumed same as before) */}
+      {/* MODALS */}
       {isTeamManagerOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
               <div className="bg-slate-900 border border-slate-700 p-0 rounded-xl shadow-2xl w-full max-w-[500px] overflow-hidden">
@@ -1294,7 +1436,7 @@ const App = () => {
                     <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Rotation</h3>
                     <div className="grid grid-cols-3 gap-3">
                       {[1, 2, 3, 4, 5, 6].map(num => (
-                        <button key={num} onClick={() => handleViewChange(num, currentPhase)} className={`py-3 rounded-xl font-black text-lg transition-all ${currentRotation === num ? 'bg-red-600 text-white shadow-lg ring-2 ring-red-400' : 'bg-slate-900 text-slate-400 hover:bg-slate-700'}`}>{num}</button>
+                        <button key={num} onClick={() => handleViewChange(num, currentPhase)} className={`py-3 rounded-xl font-black text-lg transition-all ${currentRotation === num ? (gameMode === 'offense' ? 'bg-red-600 text-white shadow-lg ring-2 ring-red-400' : 'bg-blue-600 text-white shadow-lg ring-2 ring-blue-400') : 'bg-slate-900 text-slate-400 hover:bg-slate-700'}`}>{num}</button>
                       ))}
                     </div>
                  </div>
@@ -1302,15 +1444,15 @@ const App = () => {
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Phase</h3>
                         <div className="flex bg-slate-900 rounded-md p-0.5 border border-slate-700">
-                            <button onClick={() => handleViewChange(currentRotation, 'receive1', 'offense')} className={`px-2 py-1 rounded text-[10px] font-bold ${gameMode === 'offense' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>OFF</button>
-                            <button onClick={() => handleViewChange(currentRotation, 'base', 'defense')} className={`px-2 py-1 rounded text-[10px] font-bold ${gameMode === 'defense' ? 'bg-red-600 text-white' : 'text-slate-400'}`}>DEF</button>
+                            <button onClick={() => handleViewChange(currentRotation, 'receive1', 'offense')} className={`px-2 py-1 rounded text-[10px] font-bold ${gameMode === 'offense' ? 'bg-red-600 text-white' : 'text-slate-400'}`}>OFF</button>
+                            <button onClick={() => handleViewChange(currentRotation, 'base', 'defense')} className={`px-2 py-1 rounded text-[10px] font-bold ${gameMode === 'defense' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>DEF</button>
                         </div>
                     </div>
                     <div className="flex flex-col gap-2">
                        {currentPhasesList.map(p => (
                            <button key={p.id} onClick={() => handleViewChange(currentRotation, p.id)} className={`flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold transition-all ${currentPhase === p.id ? 'bg-slate-100 text-slate-900' : 'bg-slate-900 text-slate-400 hover:bg-slate-700'}`}>
                                {p.label}
-                               {currentPhase === p.id && <div className="w-2 h-2 bg-red-500 rounded-full" />}
+                               {currentPhase === p.id && <div className={`w-2 h-2 rounded-full ${gameMode === 'offense' ? 'bg-red-500' : 'bg-blue-500'}`} />}
                            </button>
                        ))}
                     </div>
@@ -1322,18 +1464,18 @@ const App = () => {
                <div className="w-full flex flex-wrap gap-2 justify-between items-center mb-2 px-1">
                   <div className="flex gap-2">
                        <button onClick={undo} disabled={history.length === 0} className="p-2 rounded-lg border border-slate-700 bg-slate-800 text-white"><Undo size={18} /></button>
-                       {/* REMOVED OVERLAP BUTTON HERE */}
                   </div>
                   <div className="flex items-center gap-2">
                       <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 overflow-x-auto no-scrollbar max-w-[200px] md:max-w-none">
                            <button onClick={() => setMode('move')} className={`p-1.5 rounded-md ${mode === 'move' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Move size={18} /></button>
                            <button onClick={() => setMode('draw')} className={`p-1.5 rounded-md ${mode === 'draw' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Pencil size={18} /></button>
                            <button onClick={() => setMode('arrow')} className={`p-1.5 rounded-md ${mode === 'arrow' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><CustomArrowIcon size={18} /></button>
+                           <button onClick={() => setMode('line')} className={`p-1.5 rounded-md ${mode === 'line' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><DiagonalLineIcon size={18} /></button>
                            <button onClick={() => setMode('rect')} className={`p-1.5 rounded-md ${mode === 'rect' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Square size={18} /></button>
-                           <button onClick={() => setMode('triangle')} className={`p-1.5 rounded-md ${mode === 'triangle' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Triangle size={18} /></button>
-                           {['draw', 'arrow', 'rect', 'triangle'].includes(mode) && (
+                           <button onClick={() => setMode('polygon')} className={`p-1.5 rounded-md ${mode === 'polygon' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Hexagon size={18} /></button>
+                           {['draw', 'arrow', 'line', 'rect', 'polygon'].includes(mode) && (
                                <div className="flex items-center gap-1 pl-2 border-l border-slate-600 ml-2">
-                                    {['#000000', '#22c55e', '#3b82f6', '#ef4444', '#facc15', '#ffffff'].map(c => (
+                                    {['#000000', '#22c55e', '#3b82f6', '#ef4444', '#facc15', '#9ca3af'].map(c => (
                                         <button key={c} onClick={() => setDrawColor(c)} className={`w-4 h-4 rounded-full border border-white transition-transform hover:scale-125 flex-shrink-0 ${drawColor === c ? 'ring-1 ring-offset-1 ring-white scale-125' : ''}`} style={{ backgroundColor: c }} />
                                     ))}
                                </div>
@@ -1346,13 +1488,12 @@ const App = () => {
                </div>
 
                <div className="w-full bg-slate-800 p-1 md:p-2 rounded-xl shadow-2xl ring-1 ring-slate-700">
-                    <Court courtRef={courtRef} paths={paths} currentPath={currentPath} onMouseDown={handleCourtDown} playerPositions={playerPositions} attacker={currentAttacker}>
+                    <Court courtRef={courtRef} paths={paths} currentPath={currentPath} onMouseDown={handleCourtDown} onDoubleClick={handleDoubleClick} playerPositions={playerPositions} attacker={currentAttacker} hoveredElement={hoveredElement}>
                       {Object.entries(playerPositions).map(([id, pos]) => {
                         const player = roster.find(p => p.id === id);
                         if (!player) return null;
                         return <PlayerToken key={id} player={player} x={pos.x} y={pos.y} isDragging={draggedPlayer?.id === id && !draggedPlayer?.isBench} isBench={false} onStartInteraction={handleTokenDown} />;
                       })}
-                      {isRulesActive && mode === 'move' && <div className="absolute top-2 right-2 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm opacity-80 pointer-events-none z-40 uppercase tracking-wider">Rules On</div>}
                     </Court>
                </div>
 
@@ -1362,7 +1503,7 @@ const App = () => {
                          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Rotation</div>
                          <div className="flex justify-between bg-slate-900 p-1 rounded-xl border border-slate-800">
                              {[1,2,3,4,5,6].map(r => (
-                                 <button key={r} onClick={() => handleViewChange(r, currentPhase)} className={`w-10 h-10 rounded-lg font-black text-lg flex items-center justify-center ${currentRotation === r ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500'}`}>{r}</button>
+                                 <button key={r} onClick={() => handleViewChange(r, currentPhase)} className={`w-10 h-10 rounded-lg font-black text-lg flex items-center justify-center ${currentRotation === r ? (gameMode === 'offense' ? 'bg-red-600 text-white shadow-lg' : 'bg-blue-600 text-white shadow-lg') : 'text-slate-500'}`}>{r}</button>
                              ))}
                          </div>
                      </div>
@@ -1370,8 +1511,8 @@ const App = () => {
                          <div className="flex justify-between items-center mb-2">
                              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Phase</div>
                              <div className="flex bg-slate-900 rounded-md p-0.5 border border-slate-800">
-                                <button onClick={() => handleViewChange(currentRotation, 'receive1', 'offense')} className={`px-3 py-1 rounded text-[10px] font-bold ${gameMode === 'offense' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>OFF</button>
-                                <button onClick={() => handleViewChange(currentRotation, 'base', 'defense')} className={`px-3 py-1 rounded text-[10px] font-bold ${gameMode === 'defense' ? 'bg-red-600 text-white' : 'text-slate-400'}`}>DEF</button>
+                                <button onClick={() => handleViewChange(currentRotation, 'receive1', 'offense')} className={`px-3 py-1 rounded text-[10px] font-bold ${gameMode === 'offense' ? 'bg-red-600 text-white' : 'text-slate-400'}`}>OFF</button>
+                                <button onClick={() => handleViewChange(currentRotation, 'base', 'defense')} className={`px-3 py-1 rounded text-[10px] font-bold ${gameMode === 'defense' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>DEF</button>
                              </div>
                          </div>
                          <div className="grid grid-cols-4 gap-2">
@@ -1414,15 +1555,15 @@ const App = () => {
         <div className={activeTab === 'export' ? 'block' : 'hidden'}>
             <div className="bg-slate-950 min-h-screen pb-24">
                 <div className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur border-b border-slate-800 p-4 flex justify-between items-center shadow-lg">
-                    <h2 className="text-lg font-bold text-white flex items-center gap-2"><Printer size={18} className="text-red-500" /> Game Plan</h2>
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2"><Trophy size={18} className={gameMode === 'offense' ? "text-red-500" : "text-blue-500"} /> Game Plan</h2>
                     
                     {/* NEW EXPORT TOGGLE SWITCH */}
                     <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 mx-4">
-                        <button onClick={() => setGameMode('offense')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${gameMode === 'offense' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>OFFENSE</button>
-                        <button onClick={() => setGameMode('defense')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${gameMode === 'defense' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>DEFENSE</button>
+                        <button onClick={() => setGameMode('offense')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${gameMode === 'offense' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>OFFENSE</button>
+                        <button onClick={() => setGameMode('defense')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${gameMode === 'defense' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>DEFENSE</button>
                     </div>
 
-                    <button onClick={() => handleExport('full-report-grid', `GamePlan-${gameMode}`)} disabled={isExporting} className={`bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm shadow-lg transition-all ${isExporting ? 'opacity-70 cursor-wait' : ''}`}>
+                    <button onClick={() => handleExport('full-report-grid', `GamePlan-${gameMode}`)} disabled={isExporting} className={`${gameMode === 'offense' ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'} text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm shadow-lg transition-all ${isExporting ? 'opacity-70 cursor-wait' : ''}`}>
                         {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} {isExporting ? 'Generating...' : 'Download'}
                     </button>
                 </div>
@@ -1447,8 +1588,8 @@ const App = () => {
                             )}
                             {/* MOBILE GAME PLAN TOGGLE */}
                             <div className="flex justify-center gap-2 mt-2">
-                                <button onClick={() => setGameMode('offense')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${gameMode === 'offense' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>OFFENSE</button>
-                                <button onClick={() => setGameMode('defense')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${gameMode === 'defense' ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-400'}`}>DEFENSE</button>
+                                <button onClick={() => setGameMode('offense')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${gameMode === 'offense' ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-400'}`}>OFFENSE</button>
+                                <button onClick={() => setGameMode('defense')} className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${gameMode === 'defense' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>DEFENSE</button>
                             </div>
                         </div>
                         {[1, 2, 3, 4, 5, 6].map(rot => (
@@ -1538,7 +1679,7 @@ const App = () => {
           <div className="flex justify-around items-center h-16">
               <button onClick={() => setActiveTab('roster')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'roster' ? 'text-red-500' : 'text-slate-500'}`}><Users size={20} className={activeTab === 'roster' ? 'fill-current' : ''} /><span className="text-[10px] font-bold mt-1">Roster</span></button>
               <button onClick={() => setActiveTab('board')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'board' ? 'text-red-500' : 'text-slate-500'}`}><CourtIcon size={20} /><span className="text-[10px] font-bold mt-1">Court</span></button>
-              <button onClick={() => { setActiveTab('export'); saveCurrentState(); }} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'export' ? 'text-red-500' : 'text-slate-500'}`}><ClipboardList size={20} /><span className="text-[10px] font-bold mt-1">Plan</span></button>
+              <button onClick={() => { setActiveTab('export'); saveCurrentState(); }} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'export' ? 'text-red-500' : 'text-slate-500'}`}><Trophy size={20} /><span className="text-[10px] font-bold mt-1">Plan</span></button>
           </div>
       </div>
     </div>
