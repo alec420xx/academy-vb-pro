@@ -101,8 +101,8 @@ const RotationSquare = ({ rotation, roster }) => {
       const p = zones[zoneId];
       return (
           <div className={`flex flex-col items-center justify-center ${borderClasses} bg-white h-full overflow-hidden p-0.5`}>
-              <div className="font-black text-slate-900 text-[11px] leading-none mb-0.5 export-text-fix">{p ? p.number : '-'}</div>
-              <div className="text-[6px] font-bold text-slate-500 uppercase leading-none">{p ? p.role : ''}</div>
+              <div className="font-black text-slate-900 text-[10px] sm:text-[12px] leading-none mb-0.5 export-text-fix">{p ? p.number : '-'}</div>
+              <div className="text-[6px] sm:text-[8px] font-bold text-slate-500 uppercase leading-none">{p ? p.role : ''}</div>
           </div>
       );
   };
@@ -1160,8 +1160,9 @@ const App = () => {
                                         
                                         return (
                                             <div key={phase.id} className="flex flex-col h-full">
-                                                <div className="flex-1 bg-white border border-slate-900 rounded-lg overflow-hidden relative">
-                                                    <div className="absolute inset-0">
+                                                {/* Modified container to center the square court without forcing clip */}
+                                                <div className="flex-1 border border-slate-900 rounded-lg flex justify-center items-center overflow-hidden bg-white p-1">
+                                                    <div className="h-full aspect-square relative">
                                                         <Court 
                                                             small={true} 
                                                             paths={data.paths || []} 
