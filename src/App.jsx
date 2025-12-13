@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Users, Pencil, Move, Trash2, Save, Undo, ChevronRight, Eraser, Settings, ShieldCheck, ShieldAlert, GripVertical, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, FileText, Download, LayoutGrid, ClipboardList, Edit3, Briefcase, AlertTriangle } from 'lucide-react';
+import html2canvas from 'html2canvas';
 
 // --- CUSTOM ICONS ---
 const ClubLogo = ({ size = 24, className = "" }) => (
@@ -100,8 +101,8 @@ const RotationSquare = ({ rotation, roster }) => {
       const p = zones[zoneId];
       return (
           <div className={`flex flex-col items-center justify-center ${borderClasses} bg-white h-full overflow-hidden p-0.5`}>
-              <div className="font-black text-slate-900 text-[10px] sm:text-[12px] leading-none mb-0.5">{p ? p.number : '-'}</div>
-              <div className="text-[6px] sm:text-[8px] font-bold text-slate-500 uppercase leading-none">{p ? p.role : ''}</div>
+              <div className="font-black text-slate-900 text-[11px] leading-none mb-0.5 export-text-fix">{p ? p.number : '-'}</div>
+              <div className="text-[6px] font-bold text-slate-500 uppercase leading-none">{p ? p.role : ''}</div>
           </div>
       );
   };
@@ -206,7 +207,8 @@ const Court = ({
       onMouseDown={onMouseDown}
       onTouchStart={onMouseDown}
       id={!small ? "court-capture-area" : undefined}
-      className={`relative w-full aspect-square bg-[#f0f4f8] ${!small ? 'shadow-sm border-2 border-slate-900 cursor-crosshair' : 'border border-slate-300'} overflow-hidden select-none bg-white`}
+      // REMOVED overflow-hidden to allow players to be placed deep/serving without clipping
+      className={`relative w-full aspect-square bg-[#f0f4f8] ${!small ? 'shadow-sm border-2 border-slate-900 cursor-crosshair' : 'border border-slate-300'} select-none bg-white`}
       style={{ touchAction: 'none' }}
     >
         <div className="absolute inset-0 bg-[#fff] pointer-events-none"></div> 
@@ -289,18 +291,22 @@ const App = () => {
     { id: 'p12', role: 'M', name: 'Sub Middle', number: '14' },
   ];
 
+  // --- GLOBAL DATA STATE ---
   const [teams, setTeams] = useState([]);
   const [currentTeamId, setCurrentTeamId] = useState(null);
   const [lineups, setLineups] = useState([]);
   const [currentLineupId, setCurrentLineupId] = useState(null);
 
+  // --- UI STATE ---
   const [isLineupManagerOpen, setIsLineupManagerOpen] = useState(false);
   const [isTeamManagerOpen, setIsTeamManagerOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   
+  // Renaming State
   const [editId, setEditId] = useState(null);
   const [editName, setEditName] = useState('');
 
+  // --- WORKING MEMORY (Active Lineup) ---
   const [roster, setRoster] = useState(defaultRoster);
   const [savedRotations, setSavedRotations] = useState({}); 
   const [activePlayerIds, setActivePlayerIds] = useState([]); 
@@ -308,6 +314,7 @@ const App = () => {
   const [paths, setPaths] = useState([]);
   const [history, setHistory] = useState([]);
 
+  // Interaction
   const [draggedPlayer, setDraggedPlayer] = useState(null);
   const [selectedBenchPlayerId, setSelectedBenchPlayerId] = useState(null); 
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 }); 
@@ -315,7 +322,9 @@ const App = () => {
   const [currentPath, setCurrentPath] = useState(null); 
   const courtRef = useRef(null);
 
+  // --- INITIALIZATION ---
   useEffect(() => {
+    // 1. Load Teams
     const savedTeams = JSON.parse(localStorage.getItem(STORAGE_KEY_TEAMS) || '[]');
     let activeTeamId = localStorage.getItem(STORAGE_KEY_ACTIVE_TEAM);
 
@@ -329,6 +338,7 @@ const App = () => {
     setTeams(initialTeams);
     setCurrentTeamId(activeTeamId || initialTeams[0].id);
 
+    // 2. Load Lineups
     const savedLineups = JSON.parse(localStorage.getItem(STORAGE_KEY_LINEUPS) || '[]');
     let activeLineupId = localStorage.getItem(STORAGE_KEY_ACTIVE_LINEUP);
     
@@ -383,6 +393,7 @@ const App = () => {
     }
   }, [roster, savedRotations, playerPositions, paths, activePlayerIds, currentLineupId]); 
 
+  // --- TEAM MANAGEMENT ---
   const createTeam = () => {
       const newTeam = {
           id: `team_${Date.now()}`,
@@ -434,6 +445,7 @@ const App = () => {
       setEditId(null);
   };
 
+  // --- LINEUP MANAGEMENT ---
   const createLineup = (name, rosterToUse, teamId = currentTeamId, currentLineupsList = lineups) => {
     const newLineup = {
       id: `lineup_${Date.now()}`,
@@ -516,6 +528,7 @@ const App = () => {
       }
   };
 
+  // --- LOGIC ---
   const initRotationDefaults = (rotNum, currentRoster) => {
       const positions = calculateDefaultPositions(rotNum, currentRoster);
       const newActiveIds = Object.keys(positions);
@@ -569,6 +582,7 @@ const App = () => {
     }, 300);
   };
 
+  // --- HELPERS FOR CONSTRAINTS ---
   const getPlayerIdInZone = (targetZone) => {
     for(let i=0; i<6; i++) {
          const zone = getPlayerZone(i, currentRotation);
@@ -606,6 +620,14 @@ const App = () => {
         const nId = getPlayerIdInZone(z); if (playerPositions[nId]) limits.maxY = Math.min(limits.maxY, playerPositions[nId].y - padding);
     });
     return limits;
+  };
+
+  // --- GLOBAL EVENT LISTENERS (TOUCH + MOUSE) ---
+  const getCoords = (e) => {
+    if (e.changedTouches && e.changedTouches.length > 0) {
+        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    }
+    return { x: e.clientX, y: e.clientY };
   };
 
   useEffect(() => {
@@ -755,13 +777,6 @@ const App = () => {
     const newRoster = [...roster];
     newRoster[index] = { ...newRoster[index], [field]: value };
     setRoster(newRoster);
-  };
-
-  const getCoords = (e) => {
-    if (e.changedTouches && e.changedTouches.length > 0) {
-        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
-    }
-    return { x: e.clientX, y: e.clientY };
   };
 
   const phases = [
