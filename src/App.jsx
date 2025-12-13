@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Users, Pencil, Move, Trash2, Save, Undo, ChevronRight, Eraser, Settings, ShieldCheck, ShieldAlert, GripVertical, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, FileText, Download, LayoutGrid, ClipboardList, Edit3, Briefcase, AlertTriangle, Loader2 } from 'lucide-react';
+import { Users, Pencil, Move, Trash2, Save, Undo, ChevronRight, Eraser, Settings, ShieldCheck, ShieldAlert, GripVertical, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, FileText, Download, LayoutGrid, ClipboardList, Edit3, Briefcase, AlertTriangle, Loader2, Menu, Printer } from 'lucide-react';
 
 // --- CUSTOM ICONS ---
 const ClubLogo = ({ size = 24, className = "" }) => (
@@ -51,6 +51,7 @@ const generateId = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString
 const getRoleColor = (role) => {
   if (role === 'S') return 'bg-yellow-400 text-yellow-950 border-yellow-500';
   if (role === 'L') return 'bg-white text-slate-900 border-slate-300';
+  if (role === '?' || role === 'Open') return 'bg-slate-200 text-slate-400 border-slate-300 border-dashed';
   if (role.startsWith('M')) return 'bg-indigo-600 text-white border-indigo-700';
   if (role.startsWith('OH')) return 'bg-emerald-600 text-white border-emerald-700';
   if (role === 'OPP' || role === 'DS' || role === 'SS') return 'bg-rose-600 text-white border-rose-700';
@@ -228,7 +229,8 @@ const Court = ({
 
 const PlayerToken = ({ player, x, y, isDragging, isBench, style, small = false, onStartInteraction, isSelected }) => {
   const isGhost = style?.position === 'fixed';
-  const sizeClasses = small ? "w-5 h-5 text-[8px] border" : "w-10 h-10 md:w-14 md:h-14 border-2";
+  // Optimized sizes for Mobile touch targets
+  const sizeClasses = small ? "w-5 h-5 text-[8px] border" : "w-11 h-11 md:w-14 md:h-14 border-2";
   const tokenColorClass = getRoleColor(player.role);
 
   return (
@@ -262,6 +264,91 @@ const PlayerToken = ({ player, x, y, isDragging, isBench, style, small = false, 
   );
 };
 
+// --- GAME PLAN SHEET COMPONENT (Reusable for Export and Preview) ---
+const GamePlanSheet = ({ teams, currentTeamId, lineups, currentLineupId, phases, roster, savedRotations, currentRotation, currentPhase, playerPositions, paths, activePlayerIds, calculateDefaultPositions, getStorageKey }) => (
+    <div className="bg-white text-slate-900 w-[1224px] h-[1584px] p-12 relative flex flex-col box-border shadow-2xl origin-top-left">
+        {/* Page Header */}
+        <div className="flex justify-between items-end border-b-4 border-slate-900 pb-6 mb-8">
+            <div>
+                <div className="flex items-center gap-4 mb-2">
+                    <div className="text-red-600"><ClubLogo size={56} /></div>
+                    <h1 className="text-5xl font-black text-slate-900 tracking-tight">GAME PLAN</h1>
+                </div>
+                <h2 className="text-2xl font-bold text-slate-500 pl-2">{lineups.find(l => l.id === currentLineupId)?.name}</h2>
+            </div>
+            <div className="text-right">
+                <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Team</div>
+                <div className="text-3xl font-black text-slate-900">{teams.find(t=>t.id===currentTeamId)?.name}</div>
+            </div>
+        </div>
+
+        {/* Grid */}
+        <div className="grid grid-cols-1 gap-6 flex-1">
+            {[1, 2, 3, 4, 5, 6].map(rot => (
+                <div key={rot} className="flex gap-6 h-[190px] border-b border-slate-200 pb-4">
+                    {/* Left Col: Rotation Header */}
+                    <div className="w-32 flex-none flex flex-col items-center justify-center gap-2 border-r border-slate-200 pr-6">
+                        <div className="bg-slate-900 text-white w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm pb-[2px] leading-none pt-0.5">R{rot}</div>
+                        <div className="w-20 h-20">
+                            <RotationSquare rotation={rot} roster={roster} />
+                        </div>
+                    </div>
+
+                    {/* Right Col: Phases */}
+                    <div className="flex-1 grid grid-cols-4 gap-6">
+                        {phases.map(phase => {
+                            const key = getStorageKey(rot, phase.id);
+                            let data = savedRotations[key];
+                            
+                            // Ensure data consistency if looking at current rotation/phase
+                            if (rot === currentRotation && phase.id === currentPhase) {
+                                data = { positions: playerPositions, paths: paths, activePlayers: activePlayerIds };
+                            }
+                            
+                            let validData = true;
+                            if (data && data.positions) {
+                                const savedIDs = Object.keys(data.positions);
+                                const existingCount = savedIDs.filter(id => roster.find(p => p.id === id)).length;
+                                if (existingCount < 6) validData = false;
+                            } else {
+                                validData = false;
+                            }
+
+                            if (!validData) {
+                                data = { positions: calculateDefaultPositions(rot, roster), paths: [] };
+                            } 
+                            
+                            return (
+                                <div key={phase.id} className="flex flex-col h-full">
+                                    <div className="flex-1 border border-slate-900 rounded-lg flex justify-center items-center overflow-hidden bg-white p-1">
+                                        <div className="h-full aspect-square relative">
+                                            <Court small={true} paths={data.paths || []} readOnly={true}>
+                                                {Object.entries(data.positions || {}).map(([id, pos]) => {
+                                                    const player = roster.find(p => p.id === id);
+                                                    if (!player) return null;
+                                                    return <PlayerToken key={id} player={player} x={pos.x} y={pos.y} small={true} />;
+                                                })}
+                                            </Court>
+                                        </div>
+                                    </div>
+                                    <div className="text-center font-bold text-[9px] uppercase text-slate-500 tracking-wider mt-1">{phase.label}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center text-xs font-bold text-slate-400 uppercase">
+            <div>Generated by ACADEMYVB PRO</div>
+            <div>{new Date().toLocaleDateString()}</div>
+        </div>
+    </div>
+);
+
+// --- MAIN APP ---
 const App = () => {
   const [activeTab, setActiveTab] = useState('board'); 
   const [currentRotation, setCurrentRotation] = useState(1);
@@ -270,6 +357,7 @@ const App = () => {
   const [drawColor, setDrawColor] = useState('#000000');
   const [enforceRules, setEnforceRules] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile sidebar
 
   // Persistence Keys
   const STORAGE_KEY_TEAMS = 'avb_teams';
@@ -400,28 +488,32 @@ const App = () => {
     }
   }, [roster, savedRotations, playerPositions, paths, activePlayerIds, currentLineupId]); 
 
-  // --- DATA SANITIZATION (Fix Zombie/Phantom bugs) ---
+  // --- DATA SANITIZATION (Fix Zombie/Missing Players) ---
   useEffect(() => {
-    // 1. Sanitize Bench Selection: If selected player deleted, clear selection
+    // 1. Sanitize Bench Selection
     if (selectedBenchPlayerId && !roster.find(p => p.id === selectedBenchPlayerId)) {
         setSelectedBenchPlayerId(null);
     }
 
-    // 2. Sanitize Active Players: Remove deleted players from court
+    // 2. Sanitize Active Players (Auto-Placeholder Logic)
     const validIds = new Set(roster.map(p => p.id));
     const ghostPlayers = activePlayerIds.filter(id => !validIds.has(id));
 
     if (ghostPlayers.length > 0) {
-        setActivePlayerIds(prev => prev.filter(id => validIds.has(id)));
-        setPlayerPositions(prev => {
-            const next = { ...prev };
-            ghostPlayers.forEach(id => delete next[id]);
-            return next;
-        });
+        // Instead of removing from court (which leaves a hole), create a placeholder player
+        const newPlaceholders = ghostPlayers.map(gid => ({
+            id: gid, // Keep ID to maintain court position
+            role: '?',
+            name: 'Open',
+            number: '?'
+        }));
+        
+        // Add placeholders back to roster to "fill" the spot
+        setRoster(prev => [...prev, ...newPlaceholders]);
     }
   }, [roster, selectedBenchPlayerId, activePlayerIds]);
 
-  // --- AUTO-SAVE ROSTER TO TEAM (Debounced) ---
+  // --- AUTO-SAVE ROSTER ---
   useEffect(() => {
     if (!currentTeamId || teams.length === 0) return;
 
@@ -431,7 +523,7 @@ const App = () => {
         );
         setTeams(updatedTeams);
         localStorage.setItem(STORAGE_KEY_TEAMS, JSON.stringify(updatedTeams));
-    }, 1000); // 1 second debounce to prevent lag on typing
+    }, 1000); 
 
     return () => clearTimeout(timer);
   }, [roster, currentTeamId, teams]);
@@ -727,21 +819,17 @@ const App = () => {
                    
                    if (nearestId) {
                        const benchId = draggedPlayer.id;
-                       
-                       // GUARD: Prevent replacing self (fixes disappearing bug if player is ghost-duplicated)
                        if (benchId !== nearestId) {
                            const newActive = activePlayerIds.map(id => id === nearestId ? benchId : id);
                            setActivePlayerIds(newActive);
                            setPlayerPositions(prev => {
                                const next = {...prev};
-                               // Safety check: ensure the court position still exists
                                if (next[nearestId]) {
-                                   next[benchId] = { ...next[nearestId] }; // Deep copy position
+                                   next[benchId] = { ...next[nearestId] }; 
                                    delete next[nearestId];
                                }
                                return next;
                            });
-                           // FIX: Clear the selection so subsequent clicks don't trigger swap logic
                            setSelectedBenchPlayerId(null);
                        }
                    }
@@ -759,7 +847,6 @@ const App = () => {
 
     window.addEventListener('mousemove', handleWindowMove);
     window.addEventListener('mouseup', handleWindowUp);
-    // FIX: Add mouseleave listener to prevent "stuck" drags
     window.addEventListener('mouseleave', handleWindowUp);
     window.addEventListener('touchmove', handleWindowMove, { passive: false });
     window.addEventListener('touchend', handleWindowUp);
@@ -786,7 +873,6 @@ const App = () => {
       else if (!isBench && mode === 'move') {
           if (selectedBenchPlayerId) {
               if (selectedBenchPlayerId === playerId) {
-                   // FIX: If selecting self (stale state), clear selection and treat as move
                    setSelectedBenchPlayerId(null);
                    saveToHistory();
                    setDraggedPlayer({ id: playerId, isBench });
@@ -851,14 +937,14 @@ const App = () => {
   };
 
   const phases = [
-    { id: 'primary', label: 'Serve Receive 1' },
-    { id: 'secondary', label: 'Serve Receive 2' },
-    { id: 'transition', label: 'Transition' },
-    { id: 'defense', label: 'Base Defense' },
+    { id: 'primary', label: 'Receive 1' },
+    { id: 'secondary', label: 'Receive 2' },
+    { id: 'transition', label: 'Trans' },
+    { id: 'defense', label: 'Defense' },
   ];
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans select-none">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans select-none pb-20 md:pb-0">
       {/* Ghost Token */}
       {draggedPlayer && draggedPlayer.isBench && (
            <PlayerToken 
@@ -869,16 +955,16 @@ const App = () => {
            />
       )}
 
-      {/* Header */}
-      <header className="bg-slate-900 border-b border-slate-700 p-4 sticky top-0 z-50 overflow-x-hidden">
+      {/* --- DESKTOP HEADER --- */}
+      <header className="hidden md:block bg-slate-900 border-b border-slate-700 p-4 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3 min-w-0">
-                <div className="bg-red-600 p-2 rounded-lg text-white shrink-0">
+            <div className="flex items-center gap-3">
+                <div className="bg-red-600 p-2 rounded-lg text-white">
                     <ClubLogo size={24} />
                 </div>
-                <div className="min-w-0">
-                    <h1 className="text-xl font-black tracking-tight text-white whitespace-nowrap overflow-hidden text-ellipsis">ACADEMYVB <span className="text-red-500">PRO</span></h1>
-                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 whitespace-nowrap overflow-hidden text-ellipsis">
+                <div>
+                    <h1 className="text-xl font-black tracking-tight text-white">ACADEMYVB <span className="text-red-500">PRO</span></h1>
+                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
                         <span className="font-bold text-white">{teams.find(t => t.id === currentTeamId)?.name}</span>
                         <ChevronRight size={12} />
                         <span className="font-bold text-slate-300">{lineups.find(l => l.id === currentLineupId)?.name || 'Untitled'}</span>
@@ -886,36 +972,58 @@ const App = () => {
                 </div>
             </div>
 
-            {/* NAV TABS - Scrollable on mobile */}
-            <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 overflow-x-auto max-w-[200px] md:max-w-none no-scrollbar mx-2">
-                <button onClick={() => setActiveTab('roster')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'roster' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
+            <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+                <button onClick={() => setActiveTab('roster')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'roster' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
                     <Users size={16} /> Roster
                 </button>
-                <button onClick={() => setActiveTab('board')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'board' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
+                <button onClick={() => setActiveTab('board')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'board' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
                     <CourtIcon size={16} /> Court
                 </button>
-                <button onClick={() => { setActiveTab('export'); saveCurrentState(); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'export' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
+                <button onClick={() => { setActiveTab('export'); saveCurrentState(); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'export' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
                     <ClipboardList size={16} /> Game Plan
                 </button>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2">
                  <button onClick={() => setIsTeamManagerOpen(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors">
-                    <Briefcase size={16} className="text-blue-400" /> <span className="hidden md:inline">Teams</span>
+                    <Briefcase size={16} className="text-blue-400" /> Teams
                  </button>
                  <button onClick={() => setIsLineupManagerOpen(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors">
-                    <FolderOpen size={16} className="text-red-400" /> <span className="hidden md:inline">Lineups</span>
+                    <FolderOpen size={16} className="text-red-400" /> Lineups
                  </button>
             </div>
         </div>
+      </header>
+
+      {/* --- MOBILE HEADER (Compact) --- */}
+      <header className="md:hidden bg-slate-900 border-b border-slate-800 p-3 sticky top-0 z-50 flex justify-between items-center shadow-lg">
+          <div className="flex items-center gap-2">
+              <div className="bg-red-600 p-1.5 rounded-md text-white">
+                  <ClubLogo size={18} />
+              </div>
+              <div className="leading-none">
+                  <div className="font-black text-white text-sm tracking-tight">ACADEMYVB</div>
+                  <div className="text-[10px] text-slate-400 font-bold truncate max-w-[120px]">
+                      {teams.find(t=>t.id===currentTeamId)?.name}
+                  </div>
+              </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setIsTeamManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700">
+               <Briefcase size={16} />
+            </button>
+            <button onClick={() => setIsLineupManagerOpen(true)} className="p-2 bg-slate-800 rounded-full text-slate-300 border border-slate-700">
+               <FolderOpen size={16} />
+            </button>
+          </div>
       </header>
 
       {/* TEAM MANAGER MODAL */}
       {isTeamManagerOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
               <div className="bg-slate-900 border border-slate-700 p-0 rounded-xl shadow-2xl w-full max-w-[500px] overflow-hidden">
-                  <div className="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800">
-                      <h2 className="text-xl font-bold text-white">My Teams</h2>
+                  <div className="p-4 md:p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800">
+                      <h2 className="text-lg md:text-xl font-bold text-white">My Teams</h2>
                       <button onClick={() => setIsTeamManagerOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
                   </div>
                   <div className="p-4 max-h-[50vh] overflow-y-auto space-y-2">
@@ -941,17 +1049,17 @@ const App = () => {
                           </div>
                       ))}
                   </div>
-                  <div className="p-6 bg-slate-800 border-t border-slate-700">
+                  <div className="p-4 md:p-6 bg-slate-800 border-t border-slate-700">
                       <div className="flex gap-2 mb-4">
                           <input 
                             type="text" 
-                            placeholder="New Team Name (e.g. 17 National)" 
+                            placeholder="New Team Name" 
                             className="flex-1 p-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                             value={newItemName}
                             onChange={(e) => setNewItemName(e.target.value)}
                           />
                           <button onClick={createTeam} className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-sm transition-colors flex items-center gap-2">
-                              <Plus size={16} /> Create Team
+                              <Plus size={16} /> <span className="hidden md:inline">Create</span>
                           </button>
                       </div>
                       <button onClick={clearAllData} className="w-full p-2 bg-slate-800 hover:bg-red-900/30 text-red-400 rounded-lg font-medium text-xs flex items-center justify-center gap-2 border border-slate-700 hover:border-red-800">
@@ -966,12 +1074,12 @@ const App = () => {
       {isLineupManagerOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
               <div className="bg-slate-900 border border-slate-700 p-0 rounded-xl shadow-2xl w-full max-w-[500px] overflow-hidden">
-                  <div className="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800">
-                      <h2 className="text-xl font-bold text-white">Lineups <span className="text-slate-500 text-sm ml-2">for {teams.find(t=>t.id===currentTeamId)?.name}</span></h2>
+                  <div className="p-4 md:p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800">
+                      <h2 className="text-lg md:text-xl font-bold text-white">Lineups</h2>
                       <button onClick={() => setIsLineupManagerOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
                   </div>
                   
-                  <div className="p-4 overflow-y-auto flex-1 space-y-2">
+                  <div className="p-4 overflow-y-auto flex-1 space-y-2 max-h-[50vh]">
                       {lineups.filter(l => l.teamId === currentTeamId).map(l => (
                           <div key={l.id} className={`flex items-center justify-between p-3 rounded-lg border transition-all ${currentLineupId === l.id ? 'bg-red-900/20 border-red-500/50' : 'bg-slate-800 border-slate-700 hover:border-slate-500'}`}>
                               {editId === l.id ? (
@@ -995,16 +1103,14 @@ const App = () => {
                       ))}
                   </div>
 
-                  <div className="p-6 bg-slate-800 border-t border-slate-700">
-                      <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Create New Lineup</h3>
+                  <div className="p-4 md:p-6 bg-slate-800 border-t border-slate-700">
                       <input 
                         type="text" 
-                        placeholder="Lineup Name (e.g. Regionals Day 1)" 
-                        className="w-full p-3 bg-slate-900 border border-slate-600 rounded-lg mb-4 text-white placeholder-slate-500 focus:ring-2 focus:ring-red-500 outline-none"
+                        placeholder="New Lineup Name" 
+                        className="w-full p-3 bg-slate-900 border border-slate-600 rounded-lg mb-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-red-500 outline-none"
                         value={newItemName}
                         onChange={(e) => setNewItemName(e.target.value)}
                       />
-                      {/* SIMPLIFIED LINEUP CREATION BUTTON */}
                       <button 
                         onClick={() => createLineup(newItemName || 'New Lineup', roster)} 
                         className="w-full p-3 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2"
@@ -1016,42 +1122,32 @@ const App = () => {
           </div>
       )}
 
-      <main className="max-w-7xl mx-auto p-4 md:p-6 pb-20 md:pb-6">
+      <main className="max-w-7xl mx-auto md:p-6 h-full">
         
         {/* --- BOARD VIEW --- */}
         {activeTab === 'board' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Sidebar Controls */}
-            {/* Mobile: Show Bench Above Court */}
-            <div className="block lg:hidden lg:col-span-3 space-y-4">
-                 {/* Mobile Bench Duplicate */}
-                 <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Bench / Subs</h3>
-                    <div className="flex gap-2 overflow-x-auto pb-2">
-                        {roster.filter(p => !activePlayerIds.includes(p.id)).map(player => (
-                            <div 
-                                key={player.id} 
-                                className={`relative flex-none flex flex-col items-center p-2 rounded-lg border w-16 transition-all ${selectedBenchPlayerId === player.id ? 'bg-blue-900/50 border-blue-500 ring-2 ring-blue-500' : 'bg-slate-900 border-slate-700'}`}
-                                onMouseDown={(e) => handleTokenDown(e, player.id, true)}
-                                onTouchStart={(e) => handleTokenDown(e, player.id, true)}
-                            >
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 shadow-sm ${getRoleColor(player.role)}`}>
-                                    {player.number}
-                                </div>
-                                <div className="text-[9px] font-bold text-slate-300 truncate w-full text-center">{player.name}</div>
-                            </div>
-                        ))}
+          <div className="flex flex-col h-full">
+            
+            {/* MOBILE: BENCH STRIP (Above Court) */}
+            <div className="md:hidden bg-slate-900 border-b border-slate-800 py-2 px-2 overflow-x-auto no-scrollbar flex items-center gap-2 sticky top-[57px] z-30">
+                {roster.filter(p => !activePlayerIds.includes(p.id)).map(player => (
+                    <div 
+                        key={player.id} 
+                        className={`flex-none w-10 h-10 rounded-full border-2 flex items-center justify-center relative ${selectedBenchPlayerId === player.id ? 'border-blue-500 bg-blue-900/50' : 'border-slate-700 bg-slate-800'} ${getRoleColor(player.role)}`}
+                        onMouseDown={(e) => handleTokenDown(e, player.id, true)}
+                        onTouchStart={(e) => handleTokenDown(e, player.id, true)}
+                    >
+                        <span className="text-xs font-black">{player.number}</span>
                     </div>
-                    {selectedBenchPlayerId && (
-                        <div className="text-center text-xs text-blue-400 mt-2 font-bold animate-pulse">
-                            Tap a player on court to swap
-                        </div>
-                    )}
-                </div>
+                ))}
+                {roster.filter(p => !activePlayerIds.includes(p.id)).length === 0 && <span className="text-[10px] text-slate-500 px-2">Bench Empty</span>}
             </div>
 
-            <div className="lg:col-span-3 space-y-6">
-              <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 p-4 md:p-0">
+            
+            {/* Sidebar Controls (Desktop Only - Left) */}
+            <div className="hidden lg:block lg:col-span-3 space-y-4">
+                 <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl">
                 <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Select Rotation</h3>
                 <div className="grid grid-cols-3 gap-3">
                   {[1, 2, 3, 4, 5, 6].map(num => (
@@ -1081,74 +1177,104 @@ const App = () => {
                    ))}
                 </div>
               </div>
-
-              <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl">
-                <div className="flex justify-between items-center mb-4">
-                     <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Tools</h3>
-                     <button onClick={() => { saveToHistory(); setPaths([]); }} className="text-xs text-rose-500 hover:text-rose-400 flex items-center gap-1 font-bold"><Trash2 size={12} /> Clear Ink</button>
-                </div>
-                
-                <div className="flex bg-slate-900 p-1 rounded-xl mb-4">
-                    <button onClick={() => setMode('move')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'move' ? 'bg-slate-700 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}><Move size={16} /> Move</button>
-                    <button onClick={() => setMode('draw')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'draw' ? 'bg-slate-700 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}><Pencil size={16} /> Draw</button>
-                </div>
-
-                {mode === 'draw' && (
-                    <div className="flex gap-3 justify-center mb-4">
-                      {['#000000', '#22c55e', '#3b82f6', '#ef4444', '#facc15', '#ffffff'].map(c => (
-                          <button key={c} onClick={() => setDrawColor(c)} className={`w-8 h-8 rounded-full border-2 border-slate-600 shadow-sm transition-transform hover:scale-110 ${drawColor === c ? 'ring-2 ring-offset-2 ring-slate-400 scale-110 border-white' : ''}`} style={{ backgroundColor: c }} />
-                      ))}
-                    </div>
-                )}
-                
-                <button onClick={() => setEnforceRules(!enforceRules)} className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border text-xs font-bold transition-colors ${enforceRules ? 'bg-emerald-900/30 border-emerald-500/50 text-emerald-400' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
-                    <span className="flex items-center gap-2">{enforceRules ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />} Overlap Rules</span>
-                    <span className={`px-2 py-0.5 rounded ${enforceRules ? 'bg-emerald-500 text-emerald-950' : 'bg-slate-700 text-slate-400'}`}>{enforceRules ? 'ON' : 'OFF'}</span>
-                </button>
-              </div>
             </div>
 
             {/* MAIN COURT */}
-            <div className="lg:col-span-6 flex flex-col items-center">
+            <div className="lg:col-span-6 flex flex-col items-center w-full">
                
-               <div className="w-full max-w-[500px] flex justify-between items-center mb-3 px-1">
-                  <button 
-                      onClick={undo} 
-                      disabled={history.length === 0} 
-                      className={`text-sm flex items-center gap-2 px-4 py-2 rounded-full font-bold transition-colors ${history.length === 0 ? 'text-slate-600 bg-slate-800' : 'bg-slate-700 text-white hover:bg-slate-600'}`}
-                  >
-                      <Undo size={14} /> Undo
-                  </button>
+               {/* Court Actions Toolbar */}
+               <div className="w-full flex justify-between items-center mb-2 px-1">
+                  <div className="flex gap-2">
+                       <button onClick={() => setEnforceRules(!enforceRules)} className={`p-2 rounded-lg border transition-colors ${enforceRules ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+                           {enforceRules ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
+                       </button>
+                       <button onClick={undo} disabled={history.length === 0} className={`p-2 rounded-lg border transition-colors ${history.length === 0 ? 'text-slate-600 border-transparent' : 'bg-slate-800 border-slate-700 text-white'}`}>
+                           <Undo size={18} />
+                       </button>
+                  </div>
+                  
+                  {/* Drawing Tools Compact */}
+                  <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+                       <button onClick={() => setMode('move')} className={`p-1.5 rounded-md ${mode === 'move' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Move size={18} /></button>
+                       <button onClick={() => setMode('draw')} className={`p-1.5 rounded-md ${mode === 'draw' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Pencil size={18} /></button>
+                       {mode === 'draw' && (
+                           <div className="flex items-center gap-1 pl-2 border-l border-slate-600 ml-1">
+                                <div className="w-4 h-4 rounded-full bg-black border border-white cursor-pointer" onClick={() => setDrawColor('#000000')} />
+                                <div className="w-4 h-4 rounded-full bg-red-500 border border-white cursor-pointer" onClick={() => setDrawColor('#ef4444')} />
+                           </div>
+                       )}
+                  </div>
+
                   <button 
                       onClick={() => handleExport('court-capture-area', `Rotation-${currentRotation}-${currentPhase}`)} 
                       disabled={isExporting}
-                      className={`text-sm flex items-center gap-2 px-4 py-2 rounded-full font-bold text-white transition-colors ${isExporting ? 'bg-slate-600 cursor-wait' : 'bg-slate-700 hover:bg-slate-600'}`}
+                      className="p-2 bg-slate-800 rounded-lg border border-slate-700 text-white hover:bg-slate-700"
                   >
-                      {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
-                      {isExporting ? 'Saving...' : 'Download Image'}
+                      {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
                   </button>
                </div>
 
-               <div className="w-full bg-slate-800 p-2 rounded-2xl shadow-2xl ring-1 ring-slate-700">
+               <div className="w-full bg-slate-800 p-1 md:p-2 rounded-xl shadow-2xl ring-1 ring-slate-700">
                     <Court courtRef={courtRef} paths={paths} currentPath={currentPath} onMouseDown={handleCourtDown}>
                       {Object.entries(playerPositions).map(([id, pos]) => {
                         const player = roster.find(p => p.id === id);
                         if (!player) return null;
                         return <PlayerToken key={id} player={player} x={pos.x} y={pos.y} isDragging={draggedPlayer?.id === id && !draggedPlayer?.isBench} isBench={false} onStartInteraction={handleTokenDown} />;
                       })}
-                      {enforceRules && mode === 'move' && <div className="absolute top-2 right-2 bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm opacity-90 pointer-events-none z-40 uppercase tracking-wider">Rules Active</div>}
+                      {enforceRules && mode === 'move' && <div className="absolute top-2 right-2 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm opacity-80 pointer-events-none z-40 uppercase tracking-wider">Rules On</div>}
                     </Court>
                </div>
+
+                {/* MOBILE: CONTROL CENTER (Below Court) */}
+                <div className="md:hidden w-full mt-4 space-y-4">
+                     {/* Rotations */}
+                     <div>
+                         <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Rotation</div>
+                         <div className="flex justify-between bg-slate-900 p-1 rounded-xl border border-slate-800">
+                             {[1,2,3,4,5,6].map(r => (
+                                 <button 
+                                    key={r} 
+                                    onClick={() => handleViewChange(r, currentPhase)}
+                                    className={`w-10 h-10 rounded-lg font-black text-lg flex items-center justify-center ${currentRotation === r ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500'}`}
+                                 >
+                                     {r}
+                                 </button>
+                             ))}
+                         </div>
+                     </div>
+                     {/* Phases */}
+                     <div>
+                         <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Phase</div>
+                         <div className="grid grid-cols-4 gap-2">
+                             {phases.map(p => (
+                                 <button 
+                                     key={p.id}
+                                     onClick={() => handleViewChange(currentRotation, p.id)}
+                                     className={`py-2 rounded-lg text-[10px] font-bold uppercase ${currentPhase === p.id ? 'bg-slate-100 text-slate-900' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}
+                                 >
+                                     {p.label}
+                                 </button>
+                             ))}
+                         </div>
+                     </div>
+                     <div className="pt-2 flex justify-center pb-8">
+                         <button onClick={() => { saveToHistory(); setPaths([]); }} className="text-xs text-rose-500 flex items-center gap-2 px-4 py-2 bg-slate-900 rounded-lg border border-slate-800">
+                             <Trash2 size={14} /> Clear Drawing
+                         </button>
+                         <button onClick={() => initRotationDefaults(currentRotation, roster)} className="ml-2 text-xs text-slate-400 flex items-center gap-2 px-4 py-2 bg-slate-900 rounded-lg border border-slate-800">
+                            <RefreshCw size={14} /> Reset Pos
+                        </button>
+                     </div>
+                </div>
                
-               <div className="mt-6 flex justify-center">
-                  {/* UPDATED RESET BUTTON TEXT */}
+               <div className="hidden md:flex mt-6 justify-center">
                   <button onClick={() => initRotationDefaults(currentRotation, roster)} className="text-slate-500 hover:text-white text-xs font-bold flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors">
                      <RefreshCw size={12} /> Reset Positions & Drawings
                    </button>
                </div>
             </div>
 
-            {/* DESKTOP BENCH */}
+            {/* Sidebar Bench (Desktop Only - Right) */}
             <div className="hidden lg:block lg:col-span-3 space-y-4">
                 <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 h-full">
                     <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Bench / Subs</h3>
@@ -1174,144 +1300,133 @@ const App = () => {
                 </div>
             </div>
           </div>
+          </div>
         )}
 
-        {/* --- EXPORT GRID VIEW (Fixed 8.5x11 Ratio) --- */}
-        {activeTab === 'export' && (
-            <div className="bg-slate-100 min-h-screen flex justify-center py-8">
-                {/* FIXED DIMENSIONS: 1224px width, 1584px height (8.5x11 Scaled) */}
-                <div id="full-report-grid" className="bg-white text-slate-900 w-[1224px] h-[1584px] shadow-2xl p-12 relative overflow-hidden flex flex-col box-border">
+        {/* --- EXPORT GRID VIEW (Mobile Responsive + Desktop Preview) --- */}
+        <div className={activeTab === 'export' ? 'block' : 'hidden'}>
+            <div className="bg-slate-950 min-h-screen pb-24">
+                
+                {/* TOOLBAR */}
+                <div className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur border-b border-slate-800 p-4 flex justify-between items-center shadow-lg">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2"><Printer size={18} className="text-red-500" /> Game Plan</h2>
+                    <button 
+                        onClick={() => handleExport('full-report-grid', 'GamePlan-Full')}
+                        disabled={isExporting}
+                        className={`bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm shadow-lg transition-all ${isExporting ? 'opacity-70 cursor-wait' : ''}`}
+                    >
+                        {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                        {isExporting ? 'Generating...' : 'Download PDF'}
+                    </button>
+                </div>
+
+                {/* VIEW CONTAINER */}
+                <div className="max-w-7xl mx-auto p-4 md:p-6">
                     
-                    {/* Page Header */}
-                    <div className="flex justify-between items-end border-b-4 border-slate-900 pb-6 mb-8">
-                        <div>
-                            <div className="flex items-center gap-4 mb-2">
-                                <div className="text-red-600"><ClubLogo size={56} /></div>
-                                <h1 className="text-5xl font-black text-slate-900 tracking-tight">GAME PLAN</h1>
+                    {/* DESKTOP: FULL SHEET PREVIEW (Scaled) */}
+                    <div className="hidden md:flex justify-center">
+                         <div className="relative overflow-hidden shadow-2xl border border-slate-700 rounded-lg bg-white" style={{ width: '100%', maxWidth: '850px', aspectRatio: '1224/1584' }}>
+                            <div className="w-full h-full transform origin-top-left" style={{ transform: 'scale(0.69)' }}> {/* Scale calculation: 850 / 1224 ≈ 0.69 */}
+                                 {/* Render the actual sheet component for preview */}
+                                 <GamePlanSheet 
+                                    teams={teams} currentTeamId={currentTeamId} lineups={lineups} currentLineupId={currentLineupId}
+                                    phases={phases} roster={roster} savedRotations={savedRotations} currentRotation={currentRotation}
+                                    currentPhase={currentPhase} playerPositions={playerPositions} paths={paths} activePlayerIds={activePlayerIds}
+                                    calculateDefaultPositions={calculateDefaultPositions} getStorageKey={getStorageKey}
+                                />
                             </div>
-                            <h2 className="text-2xl font-bold text-slate-500 pl-2">{lineups.find(l => l.id === currentLineupId)?.name}</h2>
-                        </div>
-                        <div className="text-right">
-                            <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Team</div>
-                            <div className="text-3xl font-black text-slate-900">{teams.find(t=>t.id===currentTeamId)?.name}</div>
-                        </div>
+                         </div>
                     </div>
 
-                    {/* Grid */}
-                    <div className="grid grid-cols-1 gap-6 flex-1">
+                    {/* MOBILE: RESPONSIVE CARD LIST (Better UX) */}
+                    <div className="md:hidden space-y-6">
+                        <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
+                            <h3 className="text-white font-bold text-lg mb-1">{lineups.find(l => l.id === currentLineupId)?.name}</h3>
+                            <p className="text-slate-400 text-sm">{teams.find(t=>t.id===currentTeamId)?.name}</p>
+                        </div>
                         {[1, 2, 3, 4, 5, 6].map(rot => (
-                            <div key={rot} className="flex gap-6 h-[190px] border-b border-slate-200 pb-4">
-                                {/* Left Col: Rotation Header & Square (Fixed Width) */}
-                                <div className="w-32 flex-none flex flex-col items-center justify-center gap-2 border-r border-slate-200 pr-6">
-                                    <div className="bg-slate-900 text-white w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm pb-[2px] leading-none pt-0.5">R{rot}</div>
-                                    <div className="w-20 h-20">
+                            <div key={rot} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+                                <div className="bg-slate-800 p-3 flex items-center justify-between border-b border-slate-700">
+                                    <h3 className="font-black text-white text-lg">Rotation {rot}</h3>
+                                    <div className="w-12 h-12">
                                         <RotationSquare rotation={rot} roster={roster} />
                                     </div>
                                 </div>
-
-                                {/* Right Col: Phases (Fixed 4 Columns) */}
-                                <div className="flex-1 grid grid-cols-4 gap-6">
-                                    {phases.map(phase => {
-                                        const key = getStorageKey(rot, phase.id);
-                                        // Auto-populate data if missing (Bug fix for empty cells)
-                                        let data = savedRotations[key];
-
-                                        // FORCE CURRENT STATE IF VIEW MATCHES (Fixes drawing sync issues)
-                                        if (rot === currentRotation && phase.id === currentPhase) {
-                                            data = {
-                                                positions: playerPositions,
-                                                paths: paths,
-                                                activePlayers: activePlayerIds
-                                            };
-                                        }
-                                        
-                                        // AUTO-HEAL: If data is missing OR if the players in data don't exist in current roster
-                                        let validData = true;
-                                        if (data && data.positions) {
-                                            const savedIDs = Object.keys(data.positions);
-                                            // Check if at least 6 saved players still exist in roster
-                                            const existingCount = savedIDs.filter(id => roster.find(p => p.id === id)).length;
-                                            if (existingCount < 6) validData = false;
-                                        } else {
-                                            validData = false;
-                                        }
-
-                                        if (!validData) {
-                                            data = { positions: calculateDefaultPositions(rot, roster), paths: [] };
-                                        } 
-                                        
-                                        return (
-                                            <div key={phase.id} className="flex flex-col h-full">
-                                                {/* Modified container to center the square court without forcing clip */}
-                                                <div className="flex-1 border border-slate-900 rounded-lg flex justify-center items-center overflow-hidden bg-white p-1">
-                                                    <div className="h-full aspect-square relative">
-                                                        <Court 
-                                                            small={true} 
-                                                            paths={data.paths || []} 
-                                                            readOnly={true}
-                                                        >
+                                <div className="p-3 overflow-x-auto">
+                                    <div className="flex gap-4 min-w-max">
+                                         {phases.map(phase => {
+                                             // LOGIC DUPLICATION FOR PREVIEW (Keep consistent with sheet)
+                                             const key = getStorageKey(rot, phase.id);
+                                             let data = savedRotations[key];
+                                             if (rot === currentRotation && phase.id === currentPhase) {
+                                                data = { positions: playerPositions, paths: paths, activePlayers: activePlayerIds };
+                                             }
+                                             let validData = true;
+                                             if (data && data.positions) {
+                                                const savedIDs = Object.keys(data.positions);
+                                                const existingCount = savedIDs.filter(id => roster.find(p => p.id === id)).length;
+                                                if (existingCount < 6) validData = false;
+                                             } else validData = false;
+                                             if (!validData) data = { positions: calculateDefaultPositions(rot, roster), paths: [] };
+                                             
+                                             return (
+                                                 <div key={phase.id} className="w-40 flex flex-col">
+                                                     <div className="aspect-square bg-white rounded-lg border border-slate-700 relative overflow-hidden mb-2">
+                                                         <Court small={true} paths={data.paths || []} readOnly={true}>
                                                             {Object.entries(data.positions || {}).map(([id, pos]) => {
                                                                 const player = roster.find(p => p.id === id);
                                                                 if (!player) return null;
                                                                 return <PlayerToken key={id} player={player} x={pos.x} y={pos.y} small={true} />;
                                                             })}
                                                         </Court>
-                                                    </div>
-                                                </div>
-                                                <div className="text-center font-bold text-[9px] uppercase text-slate-500 tracking-wider mt-1">{phase.label}</div>
-                                            </div>
-                                        );
-                                    })}
+                                                     </div>
+                                                     <div className="text-center font-bold text-xs text-slate-400 uppercase">{phase.label}</div>
+                                                 </div>
+                                             )
+                                         })}
+                                    </div>
                                 </div>
                             </div>
                         ))}
                     </div>
+                </div>
 
-                    {/* Footer */}
-                    <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center text-xs font-bold text-slate-400 uppercase">
-                        <div>Generated by ACADEMYVB PRO</div>
-                        <div>{new Date().toLocaleDateString()}</div>
+                {/* HIDDEN EXPORT CANVAS (ALWAYS EXISTS FOR DOWNLOAD) */}
+                <div className="fixed -left-[9999px] top-0 overflow-hidden">
+                    <div id="full-report-grid">
+                         <GamePlanSheet 
+                             teams={teams} currentTeamId={currentTeamId} lineups={lineups} currentLineupId={currentLineupId}
+                             phases={phases} roster={roster} savedRotations={savedRotations} currentRotation={currentRotation}
+                             currentPhase={currentPhase} playerPositions={playerPositions} paths={paths} activePlayerIds={activePlayerIds}
+                             calculateDefaultPositions={calculateDefaultPositions} getStorageKey={getStorageKey}
+                         />
                     </div>
                 </div>
-
-                {/* Floating Download Button (Outside capture area) */}
-                <div className="fixed bottom-8 right-8 z-[9999]">
-                    <button 
-                        onClick={() => handleExport('full-report-grid', 'GamePlan-Full')}
-                        disabled={isExporting}
-                        className={`bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-full font-bold flex items-center gap-3 shadow-2xl hover:scale-105 transition-all ${isExporting ? 'opacity-70 cursor-wait' : ''}`}
-                    >
-                        {isExporting ? <Loader2 size={24} className="animate-spin" /> : <Download size={24} />}
-                        {isExporting ? 'Generating...' : 'Download Image'}
-                    </button>
-                </div>
             </div>
-        )}
+        </div>
 
         {/* --- ROSTER VIEW --- */}
         {activeTab === 'roster' && (
-          <div className="max-w-4xl mx-auto bg-slate-800 rounded-2xl shadow-xl border border-slate-700 overflow-hidden">
-             <div className="p-6 border-b border-slate-700 flex flex-col md:flex-row justify-between items-center bg-slate-900/50 gap-4">
+          <div className="max-w-4xl mx-auto bg-slate-800 md:rounded-2xl shadow-xl border-y md:border border-slate-700 overflow-hidden mb-24">
+             <div className="p-4 md:p-6 border-b border-slate-700 flex flex-row justify-between items-center bg-slate-900/50 gap-4">
               <div>
-                  <h2 className="text-xl font-bold text-white">Team Roster</h2>
-                  <p className="text-xs text-slate-400 mt-1">Editing <strong>{teams.find(t=>t.id===currentTeamId)?.name}</strong></p>
+                  <h2 className="text-lg md:text-xl font-bold text-white">Roster</h2>
               </div>
               <div className="flex gap-3">
-                 <button onClick={() => setRoster(prev => [...prev, { id: generateId('p'), role: 'DS', name: 'New', number: '' }])} className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-500 transition-colors"><UserPlus size={16} /> Add Player</button>
+                 <button onClick={() => setRoster(prev => [...prev, { id: generateId('p'), role: 'DS', name: 'New', number: '' }])} className="flex items-center gap-2 bg-red-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-sm font-bold hover:bg-red-500 transition-colors"><UserPlus size={16} /> Add</button>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 md:p-6">
               {roster.map((player, idx) => (
-                <div key={player.id} className="p-4 border border-slate-700 bg-slate-900 rounded-xl relative group hover:border-red-500 transition-colors">
-                  <div className="flex items-center justify-between mb-4">
+                <div key={player.id} className="p-3 md:p-4 border border-slate-700 bg-slate-900 rounded-xl relative group hover:border-red-500 transition-colors">
+                  <div className="flex items-center justify-between mb-3 md:mb-4">
                     <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{idx < 6 ? `Starter ${idx + 1}` : 'Bench'}</div>
                     {roster.length > 6 && (
                         <button onClick={() => setRoster(prev => prev.filter(p => p.id !== player.id))} className="text-slate-500 hover:text-rose-500 transition-colors"><Trash2 size={14} /></button>
                     )}
                   </div>
-                  <div className="flex items-center gap-4 mb-4">
-                    {/* Fixed Color Logic Here */}
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg ${getRoleColor(player.role)}`}>
+                  <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
+                    <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center font-black text-lg ${getRoleColor(player.role)}`}>
                         {player.number || '#'}
                     </div>
                     <div className="flex-1">
@@ -1319,26 +1434,26 @@ const App = () => {
                             type="text" 
                             value={player.name} 
                             onChange={(e) => updateRoster(idx, 'name', e.target.value)} 
-                            className="w-full bg-transparent font-bold text-white border-b border-slate-700 focus:border-red-500 focus:outline-none py-1"
+                            className="w-full bg-transparent font-bold text-white border-b border-slate-700 focus:border-red-500 focus:outline-none py-1 text-sm md:text-base"
                             placeholder="Name"
                         />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2 md:gap-3">
                     <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Role</label>
-                        <select value={player.role} onChange={(e) => updateRoster(idx, 'role', e.target.value)} className="w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-red-500">
+                        <select value={player.role} onChange={(e) => updateRoster(idx, 'role', e.target.value)} className="w-full p-1.5 md:p-2 bg-slate-800 border border-slate-600 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-red-500">
                             {["S", "OH1", "OH2", "M1", "M2", "OPP", "L", "DS", "SS", "OH", "M"].map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Number / Initials</label>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Num/Init</label>
                         <input 
                             type="text" 
                             value={player.number} 
                             onChange={(e) => updateRoster(idx, 'number', e.target.value)} 
-                            className="w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-xs text-center text-white focus:outline-none focus:ring-2 focus:ring-red-500" 
-                            placeholder="# / Init"
+                            className="w-full p-1.5 md:p-2 bg-slate-800 border border-slate-600 rounded-lg text-xs text-center text-white focus:outline-none focus:ring-2 focus:ring-red-500" 
+                            placeholder="#"
                         />
                     </div>
                   </div>
@@ -1348,6 +1463,33 @@ const App = () => {
           </div>
         )}
       </main>
+
+      {/* --- MOBILE BOTTOM NAVIGATION --- */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 pb-safe z-50">
+          <div className="flex justify-around items-center h-16">
+              <button 
+                  onClick={() => setActiveTab('roster')} 
+                  className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'roster' ? 'text-red-500' : 'text-slate-500'}`}
+              >
+                  <Users size={20} className={activeTab === 'roster' ? 'fill-current' : ''} />
+                  <span className="text-[10px] font-bold mt-1">Roster</span>
+              </button>
+              <button 
+                  onClick={() => setActiveTab('board')} 
+                  className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'board' ? 'text-red-500' : 'text-slate-500'}`}
+              >
+                  <CourtIcon size={20} />
+                  <span className="text-[10px] font-bold mt-1">Court</span>
+              </button>
+              <button 
+                  onClick={() => { setActiveTab('export'); saveCurrentState(); }} 
+                  className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'export' ? 'text-red-500' : 'text-slate-500'}`}
+              >
+                  <ClipboardList size={20} />
+                  <span className="text-[10px] font-bold mt-1">Plan</span>
+              </button>
+          </div>
+      </div>
     </div>
   );
 };
