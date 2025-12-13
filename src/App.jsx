@@ -574,6 +574,46 @@ const App = () => {
     }, 300);
   };
 
+  // --- HELPERS FOR CONSTRAINTS ---
+  const getPlayerIdInZone = (targetZone) => {
+    for(let i=0; i<6; i++) {
+         const zone = getPlayerZone(i, currentRotation);
+         if (zone === targetZone) return activePlayerIds[i]; 
+    }
+    return null;
+  };
+
+  const getConstraints = (playerId) => {
+    const playerIdx = activePlayerIds.indexOf(playerId);
+    if (playerIdx === -1) return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
+    const logicalZone = getPlayerZone(playerIdx, currentRotation);
+    const neighbors = { left: [], right: [], front: [], back: [] };
+    
+    if(logicalZone===1){ neighbors.left.push(6); neighbors.front.push(2); }
+    if(logicalZone===2){ neighbors.left.push(3); neighbors.back.push(1); }
+    if(logicalZone===3){ neighbors.left.push(4); neighbors.right.push(2); neighbors.back.push(6); }
+    if(logicalZone===4){ neighbors.right.push(3); neighbors.back.push(5); }
+    if(logicalZone===5){ neighbors.right.push(6); neighbors.front.push(4); }
+    if(logicalZone===6){ neighbors.left.push(5); neighbors.right.push(1); neighbors.front.push(3); }
+
+    let limits = { minX: 0, maxX: 100, minY: 0, maxY: 100 };
+    const padding = 2; 
+
+    neighbors.left.forEach(z => {
+        const nId = getPlayerIdInZone(z); if (playerPositions[nId]) limits.minX = Math.max(limits.minX, playerPositions[nId].x + padding);
+    });
+    neighbors.right.forEach(z => {
+        const nId = getPlayerIdInZone(z); if (playerPositions[nId]) limits.maxX = Math.min(limits.maxX, playerPositions[nId].x - padding);
+    });
+    neighbors.front.forEach(z => {
+        const nId = getPlayerIdInZone(z); if (playerPositions[nId]) limits.minY = Math.max(limits.minY, playerPositions[nId].y + padding);
+    });
+    neighbors.back.forEach(z => {
+        const nId = getPlayerIdInZone(z); if (playerPositions[nId]) limits.maxY = Math.min(limits.maxY, playerPositions[nId].y - padding);
+    });
+    return limits;
+  };
+
   useEffect(() => {
     const handleWindowMouseMove = (e) => {
         setMousePos({ x: e.clientX, y: e.clientY });
@@ -584,7 +624,9 @@ const App = () => {
              let newX = ((e.clientX - rect.left) / rect.width) * 100;
              let newY = ((e.clientY - rect.top) / rect.height) * 100;
              if (enforceRules) {
-                // ... constraints logic
+                const limits = getConstraints(draggedPlayer.id);
+                newX = Math.max(limits.minX, Math.min(limits.maxX, newX));
+                newY = Math.max(limits.minY, Math.min(limits.maxY, newY));
              }
              setPlayerPositions(prev => ({ ...prev, [draggedPlayer.id]: { x: newX, y: newY } }));
         } else if (mode === 'draw' && isDrawing) {
