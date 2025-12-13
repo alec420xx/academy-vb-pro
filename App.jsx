@@ -30,7 +30,8 @@
 \cb3     strokeLinecap\cf6 \strokec6 =\cf7 \strokec7 "round"\cf4 \cb1 \strokec4 \
 \cb3     className\cf6 \strokec6 =\{\cf4 \strokec4 className\cf6 \strokec6 \}\cf4 \cb1 \strokec4 \
 \cb3   \cf6 \strokec6 >\cf4 \cb1 \strokec4 \
-\cb3     \cf6 \strokec6 <\cf4 \strokec4 g transform\cf6 \strokec6 =\cf7 \strokec7 "translate(50,60)"\cf6 \strokec6 >\cf4 \cb1 \strokec4 \
+\cb3     \cf6 \strokec6 \{\cf8 \strokec8 /* Centered Triskelion Geometry */\cf6 \strokec6 \}\cf4 \cb1 \strokec4 \
+\cb3     \cf6 \strokec6 <\cf4 \strokec4 g transform\cf6 \strokec6 =\cf7 \strokec7 "translate(50,58)"\cf6 \strokec6 >\cf4 \cb1 \strokec4 \
 \cb3       \cf6 \strokec6 \{[\cf9 \strokec9 0\cf6 \strokec6 ,\cf4 \strokec4  \cf9 \strokec9 120\cf6 \strokec6 ,\cf4 \strokec4  \cf9 \strokec9 240\cf6 \strokec6 ].\cf4 \strokec4 map\cf6 \strokec6 ((\cf4 \strokec4 angle\cf6 \strokec6 ,\cf4 \strokec4  i\cf6 \strokec6 )\cf4 \strokec4  \cf6 \strokec6 =>\cf4 \strokec4  \cf6 \strokec6 (\cf4 \cb1 \strokec4 \
 \cb3         \cf6 \strokec6 <\cf4 \strokec4 path\cb1 \
 \cb3           key\cf6 \strokec6 =\{\cf4 \strokec4 i\cf6 \strokec6 \}\cf4 \cb1 \strokec4 \
@@ -132,9 +133,9 @@
 \cb3   \cf2 \strokec2 const\cf4 \strokec4  renderCell \cf6 \strokec6 =\cf4 \strokec4  \cf6 \strokec6 (\cf4 \strokec4 zoneId\cf6 \strokec6 ,\cf4 \strokec4  borderClasses\cf6 \strokec6 )\cf4 \strokec4  \cf6 \strokec6 =>\cf4 \strokec4  \cf6 \strokec6 \{\cf4 \cb1 \strokec4 \
 \cb3       \cf2 \strokec2 const\cf4 \strokec4  p \cf6 \strokec6 =\cf4 \strokec4  zones\cf6 \strokec6 [\cf4 \strokec4 zoneId\cf6 \strokec6 ];\cf4 \cb1 \strokec4 \
 \cb3       \cf2 \strokec2 return\cf4 \strokec4  \cf6 \strokec6 (\cf4 \cb1 \strokec4 \
-\cb3           \cf6 \strokec6 <\cf4 \strokec4 div className\cf6 \strokec6 =\{\cf7 \strokec7 `flex flex-col items-center justify-center \cf6 \strokec6 $\{\cf4 \strokec4 borderClasses\cf6 \strokec6 \}\cf7 \strokec7  bg-white h-full overflow-hidden p-0.5`\cf6 \strokec6 \}>\cf4 \cb1 \strokec4 \
-\cb3               \cf6 \strokec6 <\cf4 \strokec4 div className\cf6 \strokec6 =\cf7 \strokec7 "font-black text-slate-900 text-[11px] leading-none mb-0.5"\cf6 \strokec6 >\{\cf4 \strokec4 p \cf6 \strokec6 ?\cf4 \strokec4  p\cf6 \strokec6 .\cf2 \strokec2 number\cf4 \strokec4  \cf6 \strokec6 :\cf4 \strokec4  \cf7 \strokec7 '-'\cf6 \strokec6 \}</\cf4 \strokec4 div\cf6 \strokec6 >\cf4 \cb1 \strokec4 \
-\cb3               \cf6 \strokec6 <\cf4 \strokec4 div className\cf6 \strokec6 =\cf7 \strokec7 "text-[6px] font-bold text-slate-500 uppercase leading-none"\cf6 \strokec6 >\{\cf4 \strokec4 p \cf6 \strokec6 ?\cf4 \strokec4  p\cf6 \strokec6 .\cf4 \strokec4 role \cf6 \strokec6 :\cf4 \strokec4  \cf7 \strokec7 ''\cf6 \strokec6 \}</\cf4 \strokec4 div\cf6 \strokec6 >\cf4 \cb1 \strokec4 \
+\cb3           \cf6 \strokec6 <\cf4 \strokec4 div className\cf6 \strokec6 =\{\cf7 \strokec7 `flex flex-col items-center justify-center \cf6 \strokec6 $\{\cf4 \strokec4 borderClasses\cf6 \strokec6 \}\cf7 \strokec7  bg-white h-full overflow-hidden`\cf6 \strokec6 \}>\cf4 \cb1 \strokec4 \
+\cb3               \cf6 \strokec6 <\cf4 \strokec4 div className\cf6 \strokec6 =\cf7 \strokec7 "font-black text-slate-900 text-[10px] sm:text-[12px] leading-none mb-0.5"\cf6 \strokec6 >\{\cf4 \strokec4 p \cf6 \strokec6 ?\cf4 \strokec4  p\cf6 \strokec6 .\cf2 \strokec2 number\cf4 \strokec4  \cf6 \strokec6 :\cf4 \strokec4  \cf7 \strokec7 '-'\cf6 \strokec6 \}</\cf4 \strokec4 div\cf6 \strokec6 >\cf4 \cb1 \strokec4 \
+\cb3               \cf6 \strokec6 <\cf4 \strokec4 div className\cf6 \strokec6 =\cf7 \strokec7 "text-[6px] sm:text-[8px] font-bold text-slate-500 uppercase leading-none"\cf6 \strokec6 >\{\cf4 \strokec4 p \cf6 \strokec6 ?\cf4 \strokec4  p\cf6 \strokec6 .\cf4 \strokec4 role \cf6 \strokec6 :\cf4 \strokec4  \cf7 \strokec7 ''\cf6 \strokec6 \}</\cf4 \strokec4 div\cf6 \strokec6 >\cf4 \cb1 \strokec4 \
 \cb3           \cf6 \strokec6 </\cf4 \strokec4 div\cf6 \strokec6 >\cf4 \cb1 \strokec4 \
 \cb3       \cf6 \strokec6 );\cf4 \cb1 \strokec4 \
 \cb3   \cf6 \strokec6 \};\cf4 \cb1 \strokec4 \
@@ -288,7 +289,6 @@
 \cb3       \cf6 \strokec6 \}\}\cf4 \cb1 \strokec4 \
 \cb3     \cf6 \strokec6 >\cf4 \cb1 \strokec4 \
 \cb3       \cf6 \strokec6 <\cf4 \strokec4 div className\cf6 \strokec6 =\cf7 \strokec7 "flex flex-col items-center justify-center h-full w-full pointer-events-none select-none"\cf6 \strokec6 >\cf4 \cb1 \strokec4 \
-\cb3         \cf6 \strokec6 \{\cf8 \strokec8 /* Adjusted size and leading for export alignment stability */\cf6 \strokec6 \}\cf4 \cb1 \strokec4 \
 \cb3         \cf6 \strokec6 <\cf4 \strokec4 span className\cf6 \strokec6 =\{\cf7 \strokec7 `\cf6 \strokec6 $\{\cf4 \strokec4 small \cf6 \strokec6 ?\cf4 \strokec4  \cf7 \strokec7 'font-black text-[9px] leading-none'\cf4 \strokec4  \cf6 \strokec6 :\cf4 \strokec4  \cf7 \strokec7 'font-black text-sm md:text-lg'\cf6 \strokec6 \}\cf7 \strokec7  drop-shadow-none`\cf6 \strokec6 \}>\{\cf4 \strokec4 player\cf6 \strokec6 .\cf2 \strokec2 number\cf6 \strokec6 \}</\cf4 \strokec4 span\cf6 \strokec6 >\cf4 \cb1 \strokec4 \
 \cb3         \cf6 \strokec6 \{!\cf4 \strokec4 small \cf6 \strokec6 &&\cf4 \strokec4  \cf6 \strokec6 <\cf4 \strokec4 span className\cf6 \strokec6 =\cf7 \strokec7 "text-[8px] md:text-[9px] opacity-90 uppercase tracking-tighter font-semibold leading-none"\cf6 \strokec6 >\{\cf4 \strokec4 player\cf6 \strokec6 .\cf4 \strokec4 role\cf6 \strokec6 \}</\cf4 \strokec4 span\cf6 \strokec6 >\}\cf4 \cb1 \strokec4 \
 \cb3       \cf6 \strokec6 </\cf4 \strokec4 div\cf6 \strokec6 >\cf4 \cb1 \strokec4 \
@@ -450,31 +450,7 @@
 \cb3   \cf6 \strokec6 \};\cf4 \cb1 \strokec4 \
 \
 \cb3   \cf2 \strokec2 const\cf4 \strokec4  switchTeam \cf6 \strokec6 =\cf4 \strokec4  \cf6 \strokec6 (\cf4 \strokec4 teamId\cf6 \strokec6 ,\cf4 \strokec4  updatedTeamsList \cf6 \strokec6 =\cf4 \strokec4  \cf2 \strokec2 null\cf6 \strokec6 )\cf4 \strokec4  \cf6 \strokec6 =>\cf4 \strokec4  \cf6 \strokec6 \{\cf4 \cb1 \strokec4 \
-\cb3       \cf8 \strokec8 // Save work before leaving if needed\cf4 \cb1 \strokec4 \
-\cb3       \cf2 \strokec2 if\cf4 \strokec4  \cf6 \strokec6 (\cf4 \strokec4 currentLineupId \cf6 \strokec6 &&\cf4 \strokec4  lineups\cf6 \strokec6 .\cf4 \strokec4 length \cf6 \strokec6 >\cf4 \strokec4  \cf9 \strokec9 0\cf6 \strokec6 )\cf4 \strokec4  \cf6 \strokec6 \{\cf4 \cb1 \strokec4 \
-\cb3            \cf2 \strokec2 const\cf4 \strokec4  key \cf6 \strokec6 =\cf4 \strokec4  getStorageKey\cf6 \strokec6 (\cf4 \strokec4 currentRotation\cf6 \strokec6 ,\cf4 \strokec4  currentPhase\cf6 \strokec6 );\cf4 \cb1 \strokec4 \
-\cb3            \cf2 \strokec2 const\cf4 \strokec4  currentData \cf6 \strokec6 =\cf4 \strokec4  \cf6 \strokec6 \{\cf4 \cb1 \strokec4 \
-\cb3                positions\cf6 \strokec6 :\cf4 \strokec4  playerPositions\cf6 \strokec6 ,\cf4 \cb1 \strokec4 \
-\cb3                paths\cf6 \strokec6 :\cf4 \strokec4  paths\cf6 \strokec6 ,\cf4 \cb1 \strokec4 \
-\cb3                activePlayers\cf6 \strokec6 :\cf4 \strokec4  activePlayerIds\cb1 \
-\cb3            \cf6 \strokec6 \};\cf4 \cb1 \strokec4 \
-\cb3            \cf2 \strokec2 const\cf4 \strokec4  allLineups \cf6 \strokec6 =\cf4 \strokec4  \cf5 \strokec5 JSON\cf6 \strokec6 .\cf4 \strokec4 parse\cf6 \strokec6 (\cf4 \strokec4 localStorage\cf6 \strokec6 .\cf4 \strokec4 getItem\cf6 \strokec6 (\cf5 \strokec5 STORAGE_KEY_LINEUPS\cf6 \strokec6 )\cf4 \strokec4  \cf6 \strokec6 ||\cf4 \strokec4  \cf7 \strokec7 '[]'\cf6 \strokec6 );\cf4 \cb1 \strokec4 \
-\cb3            \cf2 \strokec2 const\cf4 \strokec4  updatedLineups \cf6 \strokec6 =\cf4 \strokec4  allLineups\cf6 \strokec6 .\cf4 \strokec4 map\cf6 \strokec6 (\cf4 \strokec4 l \cf6 \strokec6 =>\cf4 \strokec4  \cf6 \strokec6 \{\cf4 \cb1 \strokec4 \
-\cb3                \cf2 \strokec2 if\cf4 \strokec4  \cf6 \strokec6 (\cf4 \strokec4 l\cf6 \strokec6 .\cf4 \strokec4 id \cf6 \strokec6 ===\cf4 \strokec4  currentLineupId\cf6 \strokec6 )\cf4 \strokec4  \cf6 \strokec6 \{\cf4 \cb1 \strokec4 \
-\cb3                    \cf2 \strokec2 return\cf4 \strokec4  \cf6 \strokec6 \{\cf4 \cb1 \strokec4 \
-\cb3                        \cf6 \strokec6 ...\cf4 \strokec4 l\cf6 \strokec6 ,\cf4 \cb1 \strokec4 \
-\cb3                        roster\cf6 \strokec6 :\cf4 \strokec4  roster\cf6 \strokec6 ,\cf4 \cb1 \strokec4 \
-\cb3                        rotations\cf6 \strokec6 :\cf4 \strokec4  \cf6 \strokec6 \{\cf4 \cb1 \strokec4 \
-\cb3                            \cf6 \strokec6 ...\cf4 \strokec4 savedRotations\cf6 \strokec6 ,\cf4 \cb1 \strokec4 \
-\cb3                            \cf6 \strokec6 [\cf4 \strokec4 key\cf6 \strokec6 ]:\cf4 \strokec4  currentData\cb1 \
-\cb3                        \cf6 \strokec6 \}\cf4 \cb1 \strokec4 \
-\cb3                    \cf6 \strokec6 \}\cf4 \cb1 \strokec4 \
-\cb3                \cf6 \strokec6 \}\cf4 \cb1 \strokec4 \
-\cb3                \cf2 \strokec2 return\cf4 \strokec4  l\cf6 \strokec6 ;\cf4 \cb1 \strokec4 \
-\cb3            \cf6 \strokec6 \});\cf4 \cb1 \strokec4 \
-\cb3            localStorage\cf6 \strokec6 .\cf4 \strokec4 setItem\cf6 \strokec6 (\cf5 \strokec5 STORAGE_KEY_LINEUPS\cf6 \strokec6 ,\cf4 \strokec4  \cf5 \strokec5 JSON\cf6 \strokec6 .\cf4 \strokec4 stringify\cf6 \strokec6 (\cf4 \strokec4 updatedLineups\cf6 \strokec6 ));\cf4 \cb1 \strokec4 \
-\cb3       \cf6 \strokec6 \}\cf4 \cb1 \strokec4 \
-\
+\cb3       saveCurrentState\cf6 \strokec6 ();\cf4 \strokec4  \cb1 \
 \cb3       setCurrentTeamId\cf6 \strokec6 (\cf4 \strokec4 teamId\cf6 \strokec6 );\cf4 \cb1 \strokec4 \
 \cb3       localStorage\cf6 \strokec6 .\cf4 \strokec4 setItem\cf6 \strokec6 (\cf5 \strokec5 STORAGE_KEY_ACTIVE_TEAM\cf6 \strokec6 ,\cf4 \strokec4  teamId\cf6 \strokec6 );\cf4 \cb1 \strokec4 \
 \cb3       \cb1 \
