@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Users, Pencil, Move, Trash2, Undo, ChevronRight, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, Download, Trophy, Shield, Loader2, Printer, Hexagon, Circle, Square, Minus } from 'lucide-react';
+import { Users, Pencil, Move, Trash2, Undo, Redo, ChevronRight, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, Download, Trophy, Shield, Loader2, Printer, Hexagon, Circle, Square, Minus, RotateCcw } from 'lucide-react';
 
 // --- CONSTANTS & CONFIGURATION ---
 const OFFENSE_PHASES = [
@@ -280,7 +280,8 @@ const Court = ({
             ctx.lineTo(drawPoints[i].x, drawPoints[i].y);
         }
         
-        // Close shape for polygons
+        // Close shape for polygons ALWAYS
+        // Even if creating, we visualize the close
         if (drawPoints.length > 2) {
             ctx.closePath();
             ctx.globalAlpha = 0.3;
@@ -485,6 +486,29 @@ const PlayerToken = ({ player, x, y, isDragging, isBench, style, small = false, 
   const sizeClasses = small ? "w-5 h-5 text-[8px] border" : "w-11 h-11 md:w-14 md:h-14 border-2";
   const tokenColorClass = getRoleColor(player.role);
 
+  // Position logic handling for Export vs Interactive
+  const positionStyle = {};
+  
+  if (x !== undefined && !isGhost) {
+      positionStyle.left = `${x}%`;
+      positionStyle.top = `${y}%`;
+      
+      if (small) {
+          // Use margins for export stability to prevent cut-off text in html2canvas
+          positionStyle.marginLeft = '-10px';
+          positionStyle.marginTop = '-10px';
+          positionStyle.transform = 'none';
+      } else {
+          // Use transform for smooth dragging interactions
+          positionStyle.transform = 'translate(-50%, -50%)';
+      }
+  } else {
+      // Fallback/Ghost/Bench dragging
+      positionStyle.left = style?.left;
+      positionStyle.top = style?.top;
+      positionStyle.transform = style?.transform || 'translate(-50%, -50%)';
+  }
+
   return (
     <div
       onMouseDown={(e) => {
@@ -501,16 +525,11 @@ const PlayerToken = ({ player, x, y, isDragging, isBench, style, small = false, 
         ${isSelected ? 'ring-4 ring-blue-500 ring-offset-2 z-50' : ''}
         font-sans z-40
       `}
-      style={{ 
-        left: x !== undefined && !isGhost ? `${x}%` : style?.left, 
-        top: y !== undefined && !isGhost ? `${y}%` : style?.top,
-        transform: x !== undefined && !isGhost ? 'translate(-50%, -50%)' : 'translate(-50%, -50%)',
-        touchAction: 'none'
-      }}
+      style={{ ...positionStyle, touchAction: 'none' }}
     >
-      <div className="flex flex-col items-center justify-center h-full w-full pointer-events-none select-none">
-        <span className={`${small ? 'font-black text-[9px] leading-none' : 'font-black text-sm md:text-lg'} drop-shadow-none`}>{player.number}</span>
-        {!small && <span className="text-[8px] md:text-[9px] opacity-90 uppercase tracking-tighter font-semibold leading-none">{player.role}</span>}
+      <div className="flex flex-col items-center justify-center h-full w-full pointer-events-none select-none leading-none -mt-[1px]">
+        <span className={`${small ? 'font-black text-[9px]' : 'font-black text-sm md:text-lg'} drop-shadow-none`} style={{ lineHeight: '1' }}>{player.number}</span>
+        <span className={`uppercase tracking-tighter font-bold ${small ? 'text-[6px]' : 'text-[8px] md:text-[9px] opacity-90'}`} style={{ lineHeight: '1' }}>{player.role}</span>
       </div>
     </div>
   );
@@ -635,6 +654,7 @@ const App = () => {
   const [playerPositions, setPlayerPositions] = useState({});
   const [paths, setPaths] = useState([]);
   const [history, setHistory] = useState([]);
+  const [future, setFuture] = useState([]); // Redo stack
 
   // Interaction
   const [draggedPlayer, setDraggedPlayer] = useState(null);
@@ -915,6 +935,7 @@ const App = () => {
     setGameMode('offense');
     setCurrentPhase('receive1');
     setHistory([]);
+    setFuture([]); // Clear redo
     setIsLineupManagerOpen(false);
     setSelectedBenchPlayerId(null);
     const key = getStorageKey(1, 'receive1', 'offense');
@@ -968,6 +989,7 @@ const App = () => {
     setCurrentPhase(newPhase);
     setGameMode(newMode);
     setHistory([]);
+    setFuture([]);
     setSelectedBenchPlayerId(null);
   };
 
@@ -1001,13 +1023,14 @@ const App = () => {
         const cx = ((x - rect.left) / rect.width) * 100;
         const cy = ((y - rect.top) / rect.height) * 100;
 
-        // Hover Detection (Desktop only essentially, but runs always)
+        // Hover Detection
         if (mode === 'move' && !draggedPlayer && !draggedVertex && !isDrawing) {
             const hit = performHitTest(cx, cy, rect.width, rect.height);
-            // On mobile, we rely on tap to select, so don't clear selection on mere move if it's touch
-            // But here we simply update hover state.
-            // If dragging vertex, we shouldn't change hover state.
-            if (!draggedVertex) setHoveredElement(hit);
+            // On mobile, keep selection if set, only update if new hit
+            // On desktop, hover works naturally
+            if (!draggedVertex && window.matchMedia("(hover: hover)").matches) {
+               setHoveredElement(hit);
+            }
         }
 
         if (mode === 'move' && draggedVertex) {
@@ -1041,8 +1064,8 @@ const App = () => {
                  if (anchorPos) pointToAdd = { x: cx - anchorPos.x, y: cy - anchorPos.y };
              }
 
-             if (mode === 'line') {
-                 // Line Drag
+             if (mode === 'line' || mode === 'arrow') {
+                 // Straight Line Drag
                  setCurrentPath(prev => ({ ...prev, points: [prev.points[0], pointToAdd] }));
              } else if (mode === 'polygon' || mode === 'triangle') {
                  // Poly Drag
@@ -1189,7 +1212,7 @@ const App = () => {
                   saveToHistory();
                   return;
               }
-              // If hitting shape body, maybe just select it (mobile) or do nothing (desktop drag shape not implemented yet)
+              // If hitting shape body
               if (hit.type === 'shape' && e.type === 'touchstart') {
                   setHoveredElement(hit); // Ensure selection on tap
                   return;
@@ -1226,6 +1249,7 @@ const App = () => {
           // Polygon Click Logic
           e.stopPropagation(); 
           const newPoint = { x: cx, y: cy };
+          
           if (!isDrawing) {
               saveToHistory();
               setIsDrawing(true);
@@ -1236,10 +1260,24 @@ const App = () => {
                   anchorId: null
               });
           } else {
+              // Check if clicking start point to close
+              const startPoint = currentPath.points[0];
+              const dist = Math.sqrt(Math.pow(newPoint.x - startPoint.x, 2) + Math.pow(newPoint.y - startPoint.y, 2));
+              
+              if (dist < 3 && currentPath.points.length > 2) {
+                  // Close the shape
+                  setPaths(prev => [...prev, { ...currentPath, points: currentPath.points.slice(0, -1) }]); // Remove floating point, shape is closed
+                  saveCurrentState();
+                  setCurrentPath(null);
+                  setIsDrawing(false);
+                  return;
+              }
+
+              // Normal add point
               setCurrentPath(prev => {
                   const newPoints = [...prev.points];
-                  newPoints[newPoints.length - 1] = newPoint;
-                  return { ...prev, points: [...newPoints, newPoint] };
+                  newPoints[newPoints.length - 1] = newPoint; // Fix old float
+                  return { ...prev, points: [...newPoints, newPoint] }; // Add new float
               });
           }
       }
@@ -1272,21 +1310,46 @@ const App = () => {
 
   // --- HISTORY ---
   const saveToHistory = () => {
-    setHistory(prev => [...prev, {
+    const currentState = {
       playerPositions: JSON.parse(JSON.stringify(playerPositions)),
       paths: JSON.parse(JSON.stringify(paths)),
       activePlayers: [...activePlayerIds]
-    }]);
+    };
+    setHistory(prev => [...prev, currentState]);
+    setFuture([]); // Clear future on new action
     if (history.length > 20) setHistory(prev => prev.slice(1));
   };
 
   const undo = () => {
     if (history.length === 0) return;
+    const currentState = {
+      playerPositions: JSON.parse(JSON.stringify(playerPositions)),
+      paths: JSON.parse(JSON.stringify(paths)),
+      activePlayers: [...activePlayerIds]
+    };
+    setFuture(prev => [currentState, ...prev]); // Push current to future
+
     const previousState = history[history.length - 1];
     setPlayerPositions(previousState.playerPositions);
     setPaths(previousState.paths);
     setActivePlayerIds(previousState.activePlayers);
     setHistory(prev => prev.slice(0, -1));
+  };
+
+  const redo = () => {
+    if (future.length === 0) return;
+    const currentState = {
+      playerPositions: JSON.parse(JSON.stringify(playerPositions)),
+      paths: JSON.parse(JSON.stringify(paths)),
+      activePlayers: [...activePlayerIds]
+    };
+    setHistory(prev => [...prev, currentState]); // Push current to history
+
+    const nextState = future[0];
+    setPlayerPositions(nextState.playerPositions);
+    setPaths(nextState.paths);
+    setActivePlayerIds(nextState.activePlayers);
+    setFuture(prev => prev.slice(1));
   };
   
   const updateRoster = (index, field, value) => {
@@ -1299,6 +1362,19 @@ const App = () => {
   const currentPhasesList = gameMode === 'offense' ? OFFENSE_PHASES : DEFENSE_PHASES;
   const currentAttacker = currentPhasesList.find(p => p.id === currentPhase)?.attacker;
   const isRulesActive = shouldEnforceRules(currentPhase);
+
+  // Auto-finish polygon if tool changes
+  useEffect(() => {
+     if (isDrawing && mode === 'polygon' && currentPath && currentPath.points.length > 2) {
+         setPaths(prev => [...prev, { ...currentPath, points: currentPath.points.slice(0, -1) }]);
+         saveCurrentState();
+         setCurrentPath(null);
+         setIsDrawing(false);
+     } else if (isDrawing) {
+         setCurrentPath(null);
+         setIsDrawing(false);
+     }
+  }, [mode]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans select-none pb-20 md:pb-0">
@@ -1423,8 +1499,9 @@ const App = () => {
             {/* MOBILE: BENCH STRIP */}
             <div className="md:hidden bg-slate-900 border-b border-slate-800 py-2 px-2 overflow-x-auto no-scrollbar flex items-center gap-2 sticky top-[57px] z-30">
                 {roster.filter(p => !activePlayerIds.includes(p.id)).map(player => (
-                    <div key={player.id} className={`flex-none w-10 h-10 rounded-full border-2 flex items-center justify-center relative ${selectedBenchPlayerId === player.id ? 'ring-4 ring-blue-500 z-10' : ''} ${getRoleColor(player.role)}`} onMouseDown={(e) => handleTokenDown(e, player.id, true)} onTouchStart={(e) => handleTokenDown(e, player.id, true)}>
-                        <span className="text-xs font-black">{player.number}</span>
+                    <div key={player.id} className={`flex-none w-10 h-10 rounded-full border-2 flex flex-col items-center justify-center relative ${selectedBenchPlayerId === player.id ? 'ring-4 ring-blue-500 z-10' : ''} ${getRoleColor(player.role)}`} onMouseDown={(e) => handleTokenDown(e, player.id, true)} onTouchStart={(e) => handleTokenDown(e, player.id, true)}>
+                        <span className="text-[10px] font-black leading-none">{player.number}</span>
+                        <span className="text-[7px] font-bold uppercase leading-none opacity-90">{player.role}</span>
                     </div>
                 ))}
             </div>
@@ -1462,25 +1539,31 @@ const App = () => {
             {/* MAIN COURT */}
             <div className="lg:col-span-6 flex flex-col items-center w-full">
                <div className="w-full flex flex-wrap gap-2 justify-between items-center mb-2 px-1">
-                  <div className="flex gap-2">
-                       <button onClick={undo} disabled={history.length === 0} className="p-2 rounded-lg border border-slate-700 bg-slate-800 text-white"><Undo size={18} /></button>
-                  </div>
+                  {/* Left Side: Tools & Undo/Redo */}
                   <div className="flex items-center gap-2">
-                      <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 overflow-x-auto no-scrollbar max-w-[200px] md:max-w-none">
+                       <div className="flex gap-1">
+                           <button onClick={undo} disabled={history.length === 0} className={`p-2 rounded-lg border border-slate-700 ${history.length === 0 ? 'bg-slate-800 text-slate-600' : 'bg-slate-800 text-white'}`}><Undo size={18} /></button>
+                           <button onClick={redo} disabled={future.length === 0} className={`p-2 rounded-lg border border-slate-700 ${future.length === 0 ? 'bg-slate-800 text-slate-600' : 'bg-slate-800 text-white'}`}><RotateCcw size={18} /></button>
+                       </div>
+                       <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 overflow-x-auto no-scrollbar max-w-[200px] md:max-w-none">
                            <button onClick={() => setMode('move')} className={`p-1.5 rounded-md ${mode === 'move' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Move size={18} /></button>
                            <button onClick={() => setMode('draw')} className={`p-1.5 rounded-md ${mode === 'draw' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Pencil size={18} /></button>
+                           <button onClick={() => setMode('line')} className={`p-1.5 rounded-md ${mode === 'line' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Minus size={18} /></button>
                            <button onClick={() => setMode('arrow')} className={`p-1.5 rounded-md ${mode === 'arrow' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><CustomArrowIcon size={18} /></button>
-                           <button onClick={() => setMode('line')} className={`p-1.5 rounded-md ${mode === 'line' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><DiagonalLineIcon size={18} /></button>
                            <button onClick={() => setMode('rect')} className={`p-1.5 rounded-md ${mode === 'rect' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Square size={18} /></button>
                            <button onClick={() => setMode('polygon')} className={`p-1.5 rounded-md ${mode === 'polygon' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Hexagon size={18} /></button>
-                           {['draw', 'arrow', 'line', 'rect', 'polygon'].includes(mode) && (
-                               <div className="flex items-center gap-1 pl-2 border-l border-slate-600 ml-2">
-                                    {['#000000', '#22c55e', '#3b82f6', '#ef4444', '#facc15', '#9ca3af'].map(c => (
-                                        <button key={c} onClick={() => setDrawColor(c)} className={`w-4 h-4 rounded-full border border-white transition-transform hover:scale-125 flex-shrink-0 ${drawColor === c ? 'ring-1 ring-offset-1 ring-white scale-125' : ''}`} style={{ backgroundColor: c }} />
-                                    ))}
-                               </div>
-                           )}
                       </div>
+                  </div>
+
+                  {/* Right Side: Colors & Export */}
+                  <div className="flex items-center gap-2">
+                       {['draw', 'arrow', 'line', 'rect', 'polygon'].includes(mode) && (
+                           <div className="flex items-center gap-1">
+                                {['#000000', '#22c55e', '#3b82f6', '#ef4444', '#facc15', '#9ca3af'].map(c => (
+                                    <button key={c} onClick={() => setDrawColor(c)} className={`w-5 h-5 rounded-full border border-white transition-transform hover:scale-110 flex-shrink-0 ${drawColor === c ? 'ring-2 ring-offset-1 ring-white scale-110' : ''}`} style={{ backgroundColor: c }} />
+                                ))}
+                           </div>
+                       )}
                       <button onClick={() => handleExport('court-capture-area', `Rotation-${currentRotation}-${currentPhase}`)} disabled={isExporting} className="p-2 bg-slate-800 rounded-lg border border-slate-700 text-white hover:bg-slate-700">
                           {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
                       </button>
