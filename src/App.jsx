@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Users, Pencil, Move, Trash2, Undo, Redo, ChevronRight, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, Download, Trophy, Shield, Loader2, Printer, Hexagon, Circle, Square, Minus, RotateCcw } from 'lucide-react';
+import { Users, Pencil, Move, Trash2, Undo, Redo, ChevronRight, UserPlus, X, RefreshCw, Camera, FolderOpen, Plus, Download, Trophy, Shield, Loader2, Printer, Hexagon, Circle, Minus, RotateCcw } from 'lucide-react';
 
 // --- CONSTANTS & CONFIGURATION ---
 const OFFENSE_PHASES = [
@@ -1064,7 +1064,7 @@ const App = () => {
                  if (anchorPos) pointToAdd = { x: cx - anchorPos.x, y: cy - anchorPos.y };
              }
 
-             if (mode === 'line' || mode === 'arrow') {
+             if (mode === 'line') {
                  // Straight Line Drag
                  setCurrentPath(prev => ({ ...prev, points: [prev.points[0], pointToAdd] }));
              } else if (mode === 'polygon' || mode === 'triangle') {
@@ -1121,7 +1121,7 @@ const App = () => {
            }
            setDraggedPlayer(null);
            saveCurrentState();
-       } else if (isDrawing && (mode === 'line' || mode === 'arrow' || mode === 'rect' || mode === 'draw')) {
+       } else if (isDrawing && (mode === 'line' || mode === 'arrow' || mode === 'draw')) {
            // Finish drag-based tools
            setIsDrawing(false);
            if (currentPath && currentPath.points.length > 1) {
@@ -1226,7 +1226,7 @@ const App = () => {
           
           setSelectedBenchPlayerId(null);
       }
-      else if (['draw', 'arrow', 'rect'].includes(mode)) {
+      else if (['draw', 'arrow'].includes(mode)) {
           saveToHistory();
           setIsDrawing(true);
           setCurrentPath({ 
@@ -1550,7 +1550,6 @@ const App = () => {
                            <button onClick={() => setMode('draw')} className={`p-1.5 rounded-md ${mode === 'draw' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Pencil size={18} /></button>
                            <button onClick={() => setMode('line')} className={`p-1.5 rounded-md ${mode === 'line' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Minus size={18} /></button>
                            <button onClick={() => setMode('arrow')} className={`p-1.5 rounded-md ${mode === 'arrow' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><CustomArrowIcon size={18} /></button>
-                           <button onClick={() => setMode('rect')} className={`p-1.5 rounded-md ${mode === 'rect' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Square size={18} /></button>
                            <button onClick={() => setMode('polygon')} className={`p-1.5 rounded-md ${mode === 'polygon' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Hexagon size={18} /></button>
                       </div>
                   </div>
