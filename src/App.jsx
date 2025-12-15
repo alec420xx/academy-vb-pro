@@ -310,7 +310,16 @@ const Court = ({
 
         if (type === 'arrow' && drawPoints.length > 1) {
             const last = drawPoints[drawPoints.length - 1];
-            const prev = drawPoints[drawPoints.length - 2]; 
+            let prev = drawPoints[Math.max(0, drawPoints.length - 2)]; 
+            
+            // Janky Arrow Fix: Find a point at least 10 units back for stable angle
+            for (let i = drawPoints.length - 2; i >= 0; i--) {
+                if (getDistance(last, drawPoints[i]) > 10) {
+                    prev = drawPoints[i];
+                    break;
+                }
+            }
+
             const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
             const shortenBy = small ? 5 : 10;
             drawEnd = {
@@ -335,8 +344,16 @@ const Court = ({
         ctx.stroke();
 
         if (type === 'arrow') {
-            const lookBackIndex = Math.max(0, drawPoints.length - 5); 
-            drawArrowHead(ctx, drawPoints[lookBackIndex], pLast, small ? 6 : 12);
+            const last = drawPoints[drawPoints.length - 1];
+            // Recalculate prev for the head draw to match the end adjustment
+            let prev = drawPoints[Math.max(0, drawPoints.length - 2)];
+            for (let i = drawPoints.length - 2; i >= 0; i--) {
+                if (getDistance(last, drawPoints[i]) > 10) {
+                    prev = drawPoints[i];
+                    break;
+                }
+            }
+            drawArrowHead(ctx, prev, last, small ? 6 : 12);
         }
     }
   };
@@ -365,7 +382,8 @@ const Court = ({
       }
 
       ctx.save();
-      // Draw all vertices as small circles
+      
+      // Draw all vertices as small circles, BUT NOT FOR DRAW/PENCIL
       if (path.type === 'polygon' || path.type === 'line' || path.type === 'triangle') {
           drawPoints.forEach((p, i) => {
               ctx.beginPath();
@@ -378,30 +396,61 @@ const Court = ({
           });
       }
 
-      // Draw Delete Button at Centroid
+      // Calculate Center
       let center = {x:0, y:0};
-      if (path.type === 'line' || path.type === 'arrow') {
+      if (path.type === 'line') {
           center = {
               x: (drawPoints[0].x + drawPoints[drawPoints.length-1].x)/2,
               y: (drawPoints[0].y + drawPoints[drawPoints.length-1].y)/2
           };
+      } else if (path.type === 'arrow' || path.type === 'draw') {
+          // Use middle point of the array to ensure it's on the curve
+          const midIdx = Math.floor(drawPoints.length / 2);
+          center = drawPoints[midIdx];
       } else {
           center = getCentroid(drawPoints);
       }
 
-      // Draw Trash Icon Circle
+      // Draw Buttons (Delete & Move)
+      const btnRadius = 12;
+      const spacing = 18; 
+      
+      // Delete Button (Right)
+      const delX = center.x + spacing;
+      const delY = center.y;
       ctx.beginPath();
-      ctx.arc(center.x, center.y, 12, 0, Math.PI * 2);
+      ctx.arc(delX, delY, btnRadius, 0, Math.PI * 2);
       ctx.fillStyle = '#ef4444';
       ctx.fill();
-      // Simple X
       ctx.strokeStyle = 'white';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(center.x - 4, center.y - 4);
-      ctx.lineTo(center.x + 4, center.y + 4);
-      ctx.moveTo(center.x + 4, center.y - 4);
-      ctx.lineTo(center.x - 4, center.y + 4);
+      ctx.moveTo(delX - 4, delY - 4);
+      ctx.lineTo(delX + 4, delY + 4);
+      ctx.moveTo(delX + 4, delY - 4);
+      ctx.lineTo(delX - 4, delY + 4);
+      ctx.stroke();
+
+      // Move Button (Left)
+      const moveX = center.x - spacing;
+      const moveY = center.y;
+      ctx.beginPath();
+      ctx.arc(moveX, moveY, btnRadius, 0, Math.PI * 2);
+      ctx.fillStyle = '#3b82f6';
+      ctx.fill();
+      // Draw Cross Arrows for Move
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(moveX - 5, moveY);
+      ctx.lineTo(moveX + 5, moveY);
+      ctx.moveTo(moveX, moveY - 5);
+      ctx.lineTo(moveX, moveY + 5);
+      // Arrow tips (simplified)
+      ctx.moveTo(moveX - 5, moveY); ctx.lineTo(moveX - 3, moveY - 2);
+      ctx.moveTo(moveX - 5, moveY); ctx.lineTo(moveX - 3, moveY + 2);
+      ctx.moveTo(moveX + 5, moveY); ctx.lineTo(moveX + 3, moveY - 2);
+      ctx.moveTo(moveX + 5, moveY); ctx.lineTo(moveX + 3, moveY + 2);
       ctx.stroke();
 
       ctx.restore();
@@ -725,19 +774,46 @@ const App = () => {
 
   // New Hit Test Logic
   const performHitTest = (cx, cy, width, height) => {
-      // 1. Check Delete Buttons
-      if (hoveredElement && hoveredElement.type === 'shape') {
+      const absX = (cx / 100) * width;
+      const absY = (cy / 100) * height;
+
+      // 1. Check UI Controls (Delete & Move) for ACTIVE hovered element first
+      // This bridges the gap between shape body and buttons
+      if (hoveredElement && hoveredElement.type !== 'vertex') {
           const path = paths[hoveredElement.index];
-          if (!path) return null;
-          let center = {x:0,y:0};
-          let drawPoints = path.points.map(p => ({ x: (p.x / 100) * width, y: (p.y / 100) * height }));
-          if (path.type === 'line' || path.type === 'arrow') {
-              center = { x: (drawPoints[0].x + drawPoints[drawPoints.length-1].x)/2, y: (drawPoints[0].y + drawPoints[drawPoints.length-1].y)/2 };
-          } else {
-              center = getCentroid(drawPoints);
+          if (path) {
+              let drawPoints = path.points.map(p => ({ x: (p.x / 100) * width, y: (p.y / 100) * height }));
+              let center = {x:0, y:0};
+              
+              if (path.type === 'line') {
+                  center = {
+                      x: (drawPoints[0].x + drawPoints[drawPoints.length-1].x)/2,
+                      y: (drawPoints[0].y + drawPoints[drawPoints.length-1].y)/2
+                  };
+              } else if (path.type === 'arrow' || path.type === 'draw') {
+                  const midIdx = Math.floor(drawPoints.length / 2);
+                  center = drawPoints[midIdx];
+              } else {
+                  center = getCentroid(drawPoints);
+              }
+              
+              // Button Positions (offset slightly)
+              const spacing = 18;
+              const delX = center.x + spacing;
+              const delY = center.y;
+              const moveX = center.x - spacing;
+              const moveY = center.y;
+
+              const distToDel = Math.sqrt(Math.pow(absX - delX, 2) + Math.pow(absY - delY, 2));
+              const distToMove = Math.sqrt(Math.pow(absX - moveX, 2) + Math.pow(absY - moveY, 2));
+              
+              if (distToDel < 15) return { type: 'delete', index: hoveredElement.index };
+              if (distToMove < 15) return { type: 'move-shape', index: hoveredElement.index };
+
+              // Proximity Bridge: Keep selection active if near the center control cluster
+              const distToCenter = Math.sqrt(Math.pow(absX - center.x, 2) + Math.pow(absY - center.y, 2));
+              if (distToCenter < 50) return { type: 'ui-proximity', index: hoveredElement.index }; 
           }
-          const distToDel = Math.sqrt(Math.pow((cx/100*width) - center.x, 2) + Math.pow((cy/100*height) - center.y, 2));
-          if (distToDel < 15) return { type: 'delete', index: hoveredElement.index };
       }
 
       // 2. Check Vertices
@@ -746,9 +822,9 @@ const App = () => {
           if (path.type === 'polygon' || path.type === 'line' || path.type === 'triangle') {
               for (let j = 0; j < path.points.length; j++) {
                   const p = path.points[j];
-                  const absX = (p.x / 100) * width;
-                  const absY = (p.y / 100) * height;
-                  const dist = Math.sqrt(Math.pow((cx/100*width) - absX, 2) + Math.pow((cy/100*height) - absY, 2));
+                  const absXVertex = (p.x / 100) * width;
+                  const absYVertex = (p.y / 100) * height;
+                  const dist = Math.sqrt(Math.pow(absX - absXVertex, 2) + Math.pow(absY - absYVertex, 2));
                   if (dist < 10) return { type: 'vertex', index: i, vertexIndex: j };
               }
           }
@@ -759,17 +835,18 @@ const App = () => {
           const path = paths[i];
           let hit = false;
           const absPoints = path.points.map(p => ({ x: (p.x/100)*width, y: (p.y/100)*height }));
-          const pt = { x: (cx/100)*width, y: (cy/100)*height };
+          const pt = { x: absX, y: absY };
 
           if (path.type === 'polygon' || path.type === 'triangle') {
               if (isPointInPolygon(pt, absPoints)) hit = true;
-          } else if (path.type === 'line' || path.type === 'arrow') {
+          } else if (path.type === 'line' || path.type === 'arrow' || path.type === 'draw') {
               // Line detection
               for(let k=0; k<absPoints.length-1; k++){
-                  if(distToSegment(pt, absPoints[k], absPoints[k+1]) < 10) hit = true;
+                  // Increase threshold for easier pencil selection
+                  if(distToSegment(pt, absPoints[k], absPoints[k+1]) < 15) hit = true;
               }
           } else if (path.type === 'rect') {
-              // Simple Rect detection
+              // Rect detection
               const minX = Math.min(absPoints[0].x, absPoints[1].x);
               const maxX = Math.max(absPoints[0].x, absPoints[1].x);
               const minY = Math.min(absPoints[0].y, absPoints[1].y);
@@ -997,17 +1074,48 @@ const App = () => {
     const element = document.getElementById(elementId);
     if (!element || !window.html2canvas) return;
     setIsExporting(true);
+
+    // --- ROBUST CLONE-BASED EXPORT METHOD ---
+    // Creates a clone to render to avoid scroll offsets and current view quirks
+    const clone = element.cloneNode(true);
+    const rect = element.getBoundingClientRect();
+    
+    // Style clone to match dimensions but sit at top-left
+    clone.style.position = 'fixed';
+    clone.style.top = '0';
+    clone.style.left = '0';
+    clone.style.width = `${rect.width}px`;
+    clone.style.height = `${rect.height}px`;
+    clone.style.zIndex = '-9999';
+    clone.style.backgroundColor = '#ffffff'; // Ensure background
+    
+    document.body.appendChild(clone);
+
+    // Wait a tick for DOM to settle
     setTimeout(() => {
-        window.html2canvas(element, { scale: 2, useCORS: false, logging: false, backgroundColor: '#ffffff' }).then(canvas => {
+        window.html2canvas(clone, { 
+            scale: 2, 
+            useCORS: false, 
+            logging: false, 
+            backgroundColor: '#ffffff',
+            scrollX: 0,
+            scrollY: 0,
+            windowWidth: document.documentElement.scrollWidth,
+            windowHeight: document.documentElement.scrollHeight
+        }).then(canvas => {
             const link = document.createElement('a');
             link.download = `${filename}.png`;
             link.href = canvas.toDataURL();
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            
+            // Cleanup
+            document.body.removeChild(clone);
             setIsExporting(false);
         }).catch(err => {
             console.error(err);
+            if (document.body.contains(clone)) document.body.removeChild(clone);
             setIsExporting(false);
         });
     }, 100);
@@ -1016,19 +1124,22 @@ const App = () => {
   useEffect(() => {
     const handleWindowMove = (e) => {
         const { x, y } = getCoords(e);
-        setMousePos({ x, y });
         const rect = courtRef.current?.getBoundingClientRect();
-        
         if (!rect) return;
+        
         const cx = ((x - rect.left) / rect.width) * 100;
         const cy = ((y - rect.top) / rect.height) * 100;
+        
+        // Delta for shape dragging
+        const dx = cx - (mousePos.cx || cx); 
+        const dy = cy - (mousePos.cy || cy);
+        
+        setMousePos({ x, y, cx, cy }); // Track both screen and %
 
         // Hover Detection
-        if (mode === 'move' && !draggedPlayer && !draggedVertex && !isDrawing) {
+        if (mode === 'move' && !draggedPlayer && !draggedVertex && !isDrawing && selectedShapeIndex === null) {
             const hit = performHitTest(cx, cy, rect.width, rect.height);
-            // On mobile, keep selection if set, only update if new hit
-            // On desktop, hover works naturally
-            if (!draggedVertex && window.matchMedia("(hover: hover)").matches) {
+            if (window.matchMedia("(hover: hover)").matches) {
                setHoveredElement(hit);
             }
         }
@@ -1042,6 +1153,18 @@ const App = () => {
                  newPoints[draggedVertex.vertexIndex] = { x: cx, y: cy };
                  path.points = newPoints;
                  newPaths[draggedVertex.pathIndex] = path;
+                 return newPaths;
+             });
+        }
+        
+        // Move Entire Shape
+        if (mode === 'move' && selectedShapeIndex !== null) {
+             e.preventDefault();
+             setPaths(prev => {
+                 const newPaths = [...prev];
+                 const path = { ...newPaths[selectedShapeIndex] };
+                 path.points = path.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                 newPaths[selectedShapeIndex] = path;
                  return newPaths;
              });
         }
@@ -1065,17 +1188,14 @@ const App = () => {
              }
 
              if (mode === 'line') {
-                 // Straight Line Drag
                  setCurrentPath(prev => ({ ...prev, points: [prev.points[0], pointToAdd] }));
              } else if (mode === 'polygon' || mode === 'triangle') {
-                 // Poly Drag
                  setCurrentPath(prev => {
                      const newPoints = [...prev.points];
                      newPoints[newPoints.length - 1] = pointToAdd;
                      return { ...prev, points: newPoints };
                  });
              } else {
-                 // Freehand
                  if (cx > -20 && cx < 120 && cy > -20 && cy < 120) {
                     setCurrentPath(prev => ({ ...prev, points: [...prev.points, pointToAdd] }));
                  }
@@ -1084,8 +1204,9 @@ const App = () => {
     };
 
     const handleWindowUp = (e) => {
-       if (draggedVertex) {
+       if (draggedVertex || selectedShapeIndex !== null) {
            setDraggedVertex(null);
+           setSelectedShapeIndex(null); // Stop shape drag
            saveCurrentState();
        }
 
@@ -1122,7 +1243,6 @@ const App = () => {
            setDraggedPlayer(null);
            saveCurrentState();
        } else if (isDrawing && (mode === 'line' || mode === 'arrow' || mode === 'draw')) {
-           // Finish drag-based tools
            setIsDrawing(false);
            if (currentPath && currentPath.points.length > 1) {
                setPaths(prev => [...prev, currentPath]);
@@ -1145,7 +1265,7 @@ const App = () => {
         window.removeEventListener('touchmove', handleWindowMove);
         window.removeEventListener('touchend', handleWindowUp);
     };
-  }, [mode, draggedPlayer, isDrawing, currentPath, playerPositions, activePlayerIds, savedRotations, draggedVertex, hoveredElement]); 
+  }, [mode, draggedPlayer, isDrawing, currentPath, playerPositions, activePlayerIds, savedRotations, draggedVertex, hoveredElement, selectedShapeIndex, mousePos]); 
 
   const handleTokenDown = (e, playerId, isBench) => {
       e.stopPropagation();
@@ -1192,12 +1312,11 @@ const App = () => {
       const cy = ((y - rect.top) / rect.height) * 100;
 
       if (mode === 'move') {
-          // Check if hitting a UI element (Vertex or Delete)
-          // Mobile: We need to force a hit test on touch start
+          // Check hit
           let hit = hoveredElement;
           if (!hit && e.type === 'touchstart') {
               hit = performHitTest(cx, cy, rect.width, rect.height);
-              setHoveredElement(hit); // Select it
+              setHoveredElement(hit);
           }
 
           if (hit) {
@@ -1207,19 +1326,23 @@ const App = () => {
                   saveCurrentState();
                   return;
               }
+              if (hit.type === 'move-shape') {
+                  setSelectedShapeIndex(hit.index);
+                  saveToHistory();
+                  return;
+              }
               if (hit.type === 'vertex') {
                   setDraggedVertex({ pathIndex: hit.index, vertexIndex: hit.vertexIndex });
                   saveToHistory();
                   return;
               }
-              // If hitting shape body
-              if (hit.type === 'shape' && e.type === 'touchstart') {
-                  setHoveredElement(hit); // Ensure selection on tap
+              // If hitting shape body/UI proximity, select for display only (unless touch)
+              if ((hit.type === 'shape' || hit.type === 'ui-proximity') && e.type === 'touchstart') {
+                  setHoveredElement(hit);
                   return;
               }
           }
           
-          // Deselect if clicking empty space
           if (!hit && e.type === 'touchstart') {
               setHoveredElement(null);
           }
@@ -1237,7 +1360,6 @@ const App = () => {
               modifiers: { shift: e.shiftKey }
           });
       } else if (mode === 'line') {
-          // Line Tool Start
           saveToHistory();
           setIsDrawing(true);
           setCurrentPath({
@@ -1246,7 +1368,6 @@ const App = () => {
               type: 'line'
           });
       } else if (mode === 'polygon') {
-          // Polygon Click Logic
           e.stopPropagation(); 
           const newPoint = { x: cx, y: cy };
           
@@ -1260,24 +1381,21 @@ const App = () => {
                   anchorId: null
               });
           } else {
-              // Check if clicking start point to close
               const startPoint = currentPath.points[0];
               const dist = Math.sqrt(Math.pow(newPoint.x - startPoint.x, 2) + Math.pow(newPoint.y - startPoint.y, 2));
               
               if (dist < 3 && currentPath.points.length > 2) {
-                  // Close the shape
-                  setPaths(prev => [...prev, { ...currentPath, points: currentPath.points.slice(0, -1) }]); // Remove floating point, shape is closed
+                  setPaths(prev => [...prev, { ...currentPath, points: currentPath.points.slice(0, -1) }]); 
                   saveCurrentState();
                   setCurrentPath(null);
                   setIsDrawing(false);
                   return;
               }
 
-              // Normal add point
               setCurrentPath(prev => {
                   const newPoints = [...prev.points];
-                  newPoints[newPoints.length - 1] = newPoint; // Fix old float
-                  return { ...prev, points: [...newPoints, newPoint] }; // Add new float
+                  newPoints[newPoints.length - 1] = newPoint; 
+                  return { ...prev, points: [...newPoints, newPoint] };
               });
           }
       }
@@ -1288,9 +1406,8 @@ const App = () => {
           e.preventDefault(); e.stopPropagation();
           if (!currentPath) return;
           let finalPoints = [...currentPath.points];
-          finalPoints.pop(); // Remove floating point
+          finalPoints.pop(); 
           
-          // Dedupe
           const uniquePoints = [];
           if(finalPoints.length > 0) uniquePoints.push(finalPoints[0]);
           for(let i=1; i<finalPoints.length; i++){
@@ -1543,12 +1660,12 @@ const App = () => {
                   <div className="flex items-center gap-2">
                        <div className="flex gap-1">
                            <button onClick={undo} disabled={history.length === 0} className={`p-2 rounded-lg border border-slate-700 ${history.length === 0 ? 'bg-slate-800 text-slate-600' : 'bg-slate-800 text-white'}`}><Undo size={18} /></button>
-                           <button onClick={redo} disabled={future.length === 0} className={`p-2 rounded-lg border border-slate-700 ${future.length === 0 ? 'bg-slate-800 text-slate-600' : 'bg-slate-800 text-white'}`}><RotateCcw size={18} /></button>
+                           <button onClick={redo} disabled={future.length === 0} className={`p-2 rounded-lg border border-slate-700 ${future.length === 0 ? 'bg-slate-800 text-slate-600' : 'bg-slate-800 text-white'}`}><Redo size={18} /></button>
                        </div>
                        <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 overflow-x-auto no-scrollbar max-w-[200px] md:max-w-none">
                            <button onClick={() => setMode('move')} className={`p-1.5 rounded-md ${mode === 'move' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Move size={18} /></button>
                            <button onClick={() => setMode('draw')} className={`p-1.5 rounded-md ${mode === 'draw' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Pencil size={18} /></button>
-                           <button onClick={() => setMode('line')} className={`p-1.5 rounded-md ${mode === 'line' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Minus size={18} /></button>
+                           <button onClick={() => setMode('line')} className={`p-1.5 rounded-md ${mode === 'line' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><DiagonalLineIcon size={18} /></button>
                            <button onClick={() => setMode('arrow')} className={`p-1.5 rounded-md ${mode === 'arrow' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><CustomArrowIcon size={18} /></button>
                            <button onClick={() => setMode('polygon')} className={`p-1.5 rounded-md ${mode === 'polygon' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}><Hexagon size={18} /></button>
                       </div>
